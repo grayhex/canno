@@ -12,7 +12,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run unit + integration tests
+      - name: Run unit + integration tests (sqlite)
+        run: python -m unittest -v
+
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: canno
+          POSTGRES_USER: canno
+          POSTGRES_PASSWORD: canno
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U canno"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install postgres driver
+        run: python -m pip install psycopg[binary]
+      - name: Run tests with postgres
+        env:
+          CANNO_DATABASE_URL: postgresql://canno:canno@127.0.0.1:5432/canno
+          CANNO_ADMIN_PASSWORD: test-admin-password
         run: python -m unittest -v
 
   docker-build:

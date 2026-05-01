@@ -7,6 +7,8 @@ from http.client import HTTPConnection
 from http.server import HTTPServer
 
 os.environ.setdefault('CANNO_ADMIN_PASSWORD', 'test-admin-password')
+_test_tmpdir = tempfile.TemporaryDirectory()
+os.environ['CANNO_DATABASE_URL'] = f"sqlite:///{os.path.join(_test_tmpdir.name, 'test.db')}"
 
 import app
 from canno.http.handlers import create_handler
@@ -16,9 +18,6 @@ from canno.services.stores import SqliteAuthStore
 class CannoTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._tmpdir = tempfile.TemporaryDirectory()
-        cls._old_db = app.DB
-        app.DB = os.path.join(cls._tmpdir.name, 'test.db')
         app.init_db()
         app.AUTH_STORE.ensure_schema()
 
@@ -33,8 +32,7 @@ class CannoTestCase(unittest.TestCase):
         cls.server.shutdown()
         cls.thread.join(timeout=2)
         cls.server.server_close()
-        app.DB = cls._old_db
-        cls._tmpdir.cleanup()
+        _test_tmpdir.cleanup()
 
     def request(self, method, path, body=None, headers=None, port=None):
         conn = HTTPConnection('127.0.0.1', port or self.port, timeout=5)
