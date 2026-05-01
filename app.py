@@ -6,6 +6,7 @@ from canno import config
 from canno.http.handlers import create_handler
 from canno.repositories.sqlite_repo import SqliteRepository
 from canno.services.quest_service import QuestService
+from canno.services.stores import SqliteAuthStore
 
 logging.basicConfig(
     level='INFO',
@@ -84,10 +85,9 @@ def init_db():
 
 
 ADMIN_PASSWORD_HASH_VALUE = service.init_admin_password_hash()
-LOGIN_ATTEMPTS = service.login_attempts
-STEP_ATTEMPTS = service.step_attempts
-SESSIONS = service.sessions
-H = create_handler(repo, service, ADMIN_PASSWORD_HASH_VALUE)
+AUTH_STORE = SqliteAuthStore(repo)
+AUTH_STORE.ensure_schema()
+H = create_handler(repo, service, ADMIN_PASSWORD_HASH_VALUE, AUTH_STORE)
 
 
 if __name__ == '__main__':

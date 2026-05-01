@@ -2,7 +2,6 @@ import html as html_lib
 import json
 import logging
 import secrets
-from collections import defaultdict
 from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
@@ -16,7 +15,7 @@ from canno.templates.html import error_page, html
 logger = logging.getLogger('canno')
 
 
-def create_handler(repo, service, admin_password_hash_value):
+def create_handler(repo, service, admin_password_hash_value, auth_store):
     class H(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             logger.info('%s - %s', self.address_string(), format % args)
@@ -46,11 +45,18 @@ def create_handler(repo, service, admin_password_hash_value):
             if not sid:
                 return False
             sid = sid.value
-            expires_at = service.sessions.get(sid)
+            expires_at = auth_store.get(sid)
             if not expires_at or expires_at < service.now_dt():
-                service.sessions.pop(sid, None)
+                auth_store.delete(sid)
                 return False
             return True
+
+        def _blocked(self, bucket, key, max_attempts, window_seconds):
+            cutoff = service.now_dt() - timedelta(seconds=window_seconds)
+            return auth_store.get_attempts_since(bucket, key, cutoff) >= max_attempts
+
+        def _record_attempt(self, bucket, key):
+            auth_store.add_attempt(bucket, key, service.now_dt())
 
         def require_admin(self):
             if self.is_admin_authenticated():
@@ -119,24 +125,24 @@ def create_handler(repo, service, admin_password_hash_value):
 
         def handle_login(self, data):
             ip = self.client_ip()
-            if service.blocked(service.login_attempts, ip, config.MAX_LOGIN_ATTEMPTS, config.LOGIN_WINDOW_SECONDS):
+            if self._blocked("login", ip, config.MAX_LOGIN_ATTEMPTS, config.LOGIN_WINDOW_SECONDS):
                 self.render_login('Слишком много попыток. Повторите позже.'); return
             username = service.sanitize_text(data.get('username', [''])[0], 64)
             password = service.sanitize_text(data.get('password', [''])[0], 256)
             if username == config.ADMIN_USER and service.verify_password(password, admin_password_hash_value):
                 sid = secrets.token_urlsafe(32)
-                service.sessions[sid] = service.now_dt() + timedelta(hours=8)
+                auth_store.set(sid, service.now_dt() + timedelta(hours=8))
                 self.send_response(303)
                 self.send_header('Location', '/admin')
                 self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; SameSite=Lax')
                 self.end_headers()
                 return
-            service.record_attempt(service.login_attempts, ip, config.LOGIN_WINDOW_SECONDS)
+            self._record_attempt("login", ip)
             self.render_login('Неверный логин или пароль.')
 
         def logout(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
-            if sid: service.sessions.pop(sid.value, None)
+            if sid: auth_store.delete(sid.value)
             self.send_response(303)
             self.send_header('Location', '/admin/login')
             self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0')
@@ -144,35 +150,43 @@ def create_handler(repo, service, admin_password_hash_value):
 
         def render_play(self, token):
             c = repo.connect(); cur = c.cursor()
-            p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
-            if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
-            q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
-            steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
-            if not q['active']: self.send_html(html("<main class='card'><h2>Квест закрыт админом</h2></main>")); return
-            step = next((s for s in steps if s['idx'] == p['current_step']), None)
-            progress = int((p['current_step'] - 1) / len(steps) * 100)
-            self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(q['title'])}</h1><div class='bar'><span style='width:{progress}%'></span></div><p>Этап {p['current_step']} из {len(steps)}</p><p>{html_lib.escape(step['prompt'])}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' required><button>Проверить</button></form></main>"""))
+            try:
+                p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
+                if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
+                q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
+                steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
+                if not q['active']: self.send_html(html("<main class='card'><h2>Квест закрыт админом</h2></main>")); return
+                step = next((s for s in steps if s['idx'] == p['current_step']), None)
+                progress = int((p['current_step'] - 1) / len(steps) * 100)
+                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(q['title'])}</h1><div class='bar'><span style='width:{progress}%'></span></div><p>Этап {p['current_step']} из {len(steps)}</p><p>{html_lib.escape(step['prompt'])}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' required><button>Проверить</button></form></main>"""))
+            finally:
+                c.close()
 
         def submit_password(self, token, password):
-            c = repo.connect(); cur = c.cursor(); p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
-            if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
-            ip = self.client_ip(); key = f'{ip}:{token}'
-            if service.blocked(service.step_attempts, key, config.MAX_STEP_ATTEMPTS, config.STEP_ATTEMPT_WINDOW_SECONDS):
-                self.send_html(html("<main class='card'><p>Слишком много попыток. Подождите несколько минут.</p></main>"), 429); return
-            steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
-            step = next((s for s in steps if s['idx'] == p['current_step']), None)
-            cleaned = service.sanitize_text(password, 128)
-            success = int(cleaned == step['password'])
-            cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned, success, service.now()))
-            if success:
-                service.step_attempts.pop(key, None)
-                if p['current_step'] >= len(steps):
-                    cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
-                else:
-                    cur.execute("UPDATE participants SET current_step=current_step+1, step_started_at=?, status='in_progress' WHERE id=?", (service.now(), p['id']))
-                c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
-            service.record_attempt(service.step_attempts, key, config.STEP_ATTEMPT_WINDOW_SECONDS)
-            c.commit(); self.send_html(html(f"<main class='card'><p>Неверный пароль</p><a href='/play/{token}'>Назад</a></main>"))
+            c = repo.connect(); cur = c.cursor()
+            try:
+                p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
+                if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
+                ip = self.client_ip(); key = f'{ip}:{token}'
+                if self._blocked("step", key, config.MAX_STEP_ATTEMPTS, config.STEP_ATTEMPT_WINDOW_SECONDS):
+                    self.send_html(html("<main class='card'><p>Слишком много попыток. Подождите несколько минут.</p></main>"), 429); return
+                steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
+                step = next((s for s in steps if s['idx'] == p['current_step']), None)
+                cleaned = service.sanitize_text(password, 128)
+                success = int(cleaned == step['password'])
+                cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned, success, service.now()))
+                if success:
+                    auth_store.clear_attempts("step", key)
+                    if p['current_step'] >= len(steps):
+                        cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
+                    else:
+                        cur.execute("UPDATE participants SET current_step=current_step+1, step_started_at=?, status='in_progress' WHERE id=?", (service.now(), p['id']))
+                    c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
+                c.commit()
+                self._record_attempt("step", key)
+                self.send_html(html(f"<main class='card'><p>Неверный пароль</p><a href='/play/{token}'>Назад</a></main>"))
+            finally:
+                c.close()
 
         def render_admin(self):
             self.send_html(html("<main class='card'><h1>Админка</h1></main>"))

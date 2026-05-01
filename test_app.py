@@ -9,6 +9,8 @@ from http.server import HTTPServer
 os.environ.setdefault('CANNO_ADMIN_PASSWORD', 'test-admin-password')
 
 import app
+from canno.http.handlers import create_handler
+from canno.services.stores import SqliteAuthStore
 
 
 class CannoTestCase(unittest.TestCase):
@@ -17,10 +19,8 @@ class CannoTestCase(unittest.TestCase):
         cls._tmpdir = tempfile.TemporaryDirectory()
         cls._old_db = app.DB
         app.DB = os.path.join(cls._tmpdir.name, 'test.db')
-        app.LOGIN_ATTEMPTS.clear()
-        app.STEP_ATTEMPTS.clear()
-        app.SESSIONS.clear()
         app.init_db()
+        app.AUTH_STORE.ensure_schema()
 
         cls.server = HTTPServer(('127.0.0.1', 0), app.H)
         cls.port = cls.server.server_port
@@ -36,8 +36,8 @@ class CannoTestCase(unittest.TestCase):
         app.DB = cls._old_db
         cls._tmpdir.cleanup()
 
-    def request(self, method, path, body=None, headers=None):
-        conn = HTTPConnection('127.0.0.1', self.port, timeout=5)
+    def request(self, method, path, body=None, headers=None, port=None):
+        conn = HTTPConnection('127.0.0.1', port or self.port, timeout=5)
         conn.request(method, path, body=body, headers=headers or {})
         resp = conn.getresponse()
         data = resp.read().decode('utf-8', errors='ignore')
@@ -72,19 +72,59 @@ class CannoTestCase(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('Неверный пароль', body)
 
-    def test_admin_login_and_redirect(self):
-        status, _, _ = self.request('GET', '/admin')
-        self.assertEqual(status, 303)
-
+    def test_admin_login_and_persisted_session_after_restart(self):
         payload = 'username=admin&password=test-admin-password'
         status, headers, _ = self.request(
-            'POST',
-            '/admin/login',
-            body=payload,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            'POST', '/admin/login', body=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         self.assertEqual(status, 303)
-        self.assertIn('Set-Cookie', headers)
+        cookie = headers['Set-Cookie'].split(';', 1)[0]
+
+        status, _, body = self.request('GET', '/admin', headers={'Cookie': cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('Админка', body)
+
+        # simulate restart: new handler + auth store reads same DB
+        restarted_store = SqliteAuthStore(app.repo)
+        restarted_store.ensure_schema()
+        restarted_handler = create_handler(app.repo, app.service, app.ADMIN_PASSWORD_HASH_VALUE, restarted_store)
+        srv = HTTPServer(('127.0.0.1', 0), restarted_handler)
+        port = srv.server_port
+        th = threading.Thread(target=srv.serve_forever, daemon=True)
+        th.start()
+        time.sleep(0.05)
+        try:
+            status, _, body = self.request('GET', '/admin', headers={'Cookie': cookie}, port=port)
+            self.assertEqual(status, 200)
+            self.assertIn('Админка', body)
+        finally:
+            srv.shutdown(); th.join(timeout=2); srv.server_close()
+
+    def test_step_limit_persists_after_restart(self):
+        c = app.db()
+        token = c.execute('SELECT token FROM participants ORDER BY id LIMIT 1').fetchone()['token']
+        c.close()
+
+        for _ in range(app.config.MAX_STEP_ATTEMPTS):
+            self.request(
+                'POST', f'/play/{token}', body='password=WRONG', headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            )
+
+        restarted_store = SqliteAuthStore(app.repo)
+        restarted_store.ensure_schema()
+        restarted_handler = create_handler(app.repo, app.service, app.ADMIN_PASSWORD_HASH_VALUE, restarted_store)
+        srv = HTTPServer(('127.0.0.1', 0), restarted_handler)
+        port = srv.server_port
+        th = threading.Thread(target=srv.serve_forever, daemon=True)
+        th.start(); time.sleep(0.05)
+        try:
+            status, _, body = self.request(
+                'POST', f'/play/{token}', body='password=WRONG', headers={'Content-Type': 'application/x-www-form-urlencoded'}, port=port
+            )
+            self.assertEqual(status, 429)
+            self.assertIn('Слишком много попыток', body)
+        finally:
+            srv.shutdown(); th.join(timeout=2); srv.server_close()
 
 
 if __name__ == '__main__':
