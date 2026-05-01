@@ -102,9 +102,18 @@ class QuestRepository:
         c = self.repo.connect(); cur = c.cursor()
         q = self._execute(cur, 'SELECT COUNT(*) AS c FROM quests').fetchone()['c']
         if q == 0:
-            self._execute(cur, 'INSERT INTO quests(title, final_location, active, quest_time_limit_sec) VALUES (?,?,?,?)', ('Демо-квест', 'Под стойкой у окна', 1, 3600))
+            self._execute(
+                cur,
+                'INSERT INTO quests(title, final_location, active, quest_time_limit_sec) VALUES (?,?,?,?)',
+                ('Тайна четырёх ключей', 'Финальная точка: старый сундук в библиотеке', 1, 5400),
+            )
             quest_id = cur.lastrowid if self.repo.placeholder == '?' else self._execute(cur, 'SELECT currval(pg_get_serial_sequence(\'quests\',\'id\')) AS id').fetchone()['id']
-            steps = [(quest_id, 1, 'Найди бумажку возле входной двери и введи слово.', 'СОЛНЦЕ', 600), (quest_id, 2, 'Ищи под столом в переговорной.', 'ЛИСТ', 600)]
+            steps = [
+                (quest_id, 1, 'Ключ 1: Без рук, без ног, а ворота открывает. Что это?', 'КЛЮЧ', 900),
+                (quest_id, 2, 'Ключ 2: Висит груша — нельзя скушать. Назови предмет.', 'ЛАМПОЧКА', 900),
+                (quest_id, 3, 'Ключ 3: Меня теряют, когда спешат. Меня ищут в карманах. Что это?', 'ТЕЛЕФОН', 900),
+                (quest_id, 4, 'Ключ 4: Я храню тайны и запираюсь на замок. Где лежат старые бумаги?', 'ШКАТУЛКА', 900),
+            ]
             self._executemany(cur, 'INSERT INTO steps(quest_id,idx,prompt,password,step_time_limit_sec) VALUES (?,?,?,?,?)', steps)
             self._execute(cur, 'INSERT INTO participants(quest_id, token, started_at, step_started_at) VALUES (?,?,?,?)', (quest_id, token, now_iso, now_iso))
             c.commit()
