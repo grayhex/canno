@@ -165,6 +165,18 @@ def sanitize_text(raw, max_len=256):
     return raw.strip()[:max_len]
 
 
+def parse_int(raw, default=None, minimum=None):
+    raw = sanitize_text(raw, 32)
+    if raw == '':
+        return default
+    if not raw.isdigit():
+        return None
+    value = int(raw)
+    if minimum is not None and value < minimum:
+        return None
+    return value
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.info('%s - %s', self.address_string(), format % args)
@@ -238,6 +250,17 @@ class H(BaseHTTPRequestHandler):
                 if not self.require_admin():
                     return
                 self.render_admin(); return
+            if p.path == '/admin/quest/new':
+                if not self.require_admin():
+                    return
+                self.render_quest_form(); return
+            if p.path.startswith('/admin/quest/edit'):
+                if not self.require_admin():
+                    return
+                quest_id = parse_int(parse_qs(p.query).get('id', [''])[0], minimum=1)
+                if not quest_id:
+                    self.send_html(error_page(400, 'Некорректные данные', 'id квеста обязателен'), 400); return
+                self.render_quest_form(quest_id); return
             self.send_html(error_page(404, 'Не найдено', 'Страница не существует.'), 404)
         except Exception:
             logger.exception('Unhandled GET error')
@@ -269,6 +292,18 @@ class H(BaseHTTPRequestHandler):
                 c.close()
                 logger.info('Admin created participant token for quest_id=%s', quest_id)
                 self.send_html(html(f"<main class='card'><p>Ссылка: <a href='/play/{token}'>/play/{token}</a></p><a href='/admin'>Назад</a></main>")); return
+            if p.path == '/admin/quest/save':
+                if not self.require_admin():
+                    return
+                self.save_quest(data); return
+            if p.path == '/admin/quest/delete':
+                if not self.require_admin():
+                    return
+                self.delete_quest(data); return
+            if p.path == '/admin/quest/toggle-active':
+                if not self.require_admin():
+                    return
+                self.toggle_quest_active(data); return
             self.send_json({'error': 'not found'}, 404)
         except Exception:
             logger.exception('Unhandled POST error')
@@ -376,10 +411,98 @@ class H(BaseHTTPRequestHandler):
         c.commit(); self.send_html(html(f"<main class='card'><p>Неверный пароль</p><a href='/play/{token}'>Назад</a></main>"))
 
     def render_admin(self):
-        c = db(); cur = c.cursor(); quests = cur.execute('SELECT * FROM quests').fetchall(); parts = cur.execute('SELECT * FROM participants ORDER BY id DESC').fetchall()
-        qopts = ''.join([f"<option value='{q['id']}'>{html_lib.escape(q['title'])}</option>" for q in quests])
+        c = db(); cur = c.cursor(); quests = cur.execute('SELECT * FROM quests ORDER BY id DESC').fetchall(); parts = cur.execute('SELECT * FROM participants ORDER BY id DESC').fetchall()
+        qopts = ''.join([f"<option value='{q['id']}'>{html_lib.escape(q['title'])}</option>" for q in quests if q['active']])
         rows = ''.join([f"<tr><td>{p['id']}</td><td><a href='/play/{p['token']}'>{p['token']}</a></td><td>{p['current_step']}</td><td>{'да' if p['completed'] else 'нет'}</td><td>{p['locked_until'] or '-'}</td></tr>" for p in parts])
-        self.send_html(html(f"<main class='card'><h1>Админка</h1><p><a href='/admin/logout'>Выйти</a></p><form method='post' action='/admin/create-participant'><select name='quest_id'>{qopts}</select><button>Сгенерировать ссылку участника</button></form><h2>Участники</h2><table><tr><th>ID</th><th>Token</th><th>Этап</th><th>Финиш</th><th>Блок до</th></tr>{rows}</table></main>"))
+        quest_rows = ''.join([
+            f"<tr><td>{q['id']}</td><td>{html_lib.escape(q['title'])}</td><td>{'да' if q['active'] else 'нет'}</td>"
+            f"<td><a href='/admin/quest/edit?id={q['id']}'>Редактировать</a></td>"
+            f"<td><form method='post' action='/admin/quest/toggle-active'><input type='hidden' name='quest_id' value='{q['id']}'><button>{'Деактивировать' if q['active'] else 'Активировать'}</button></form></td></tr>"
+            for q in quests
+        ])
+        self.send_html(html(f"<main class='card'><h1>Админка</h1><p><a href='/admin/logout'>Выйти</a></p><p><a href='/admin/quest/new'>Создать квест</a></p><h2>Квесты</h2><table><tr><th>ID</th><th>Название</th><th>Активен</th><th></th><th></th></tr>{quest_rows}</table><form method='post' action='/admin/create-participant'><select name='quest_id'>{qopts}</select><button>Сгенерировать ссылку участника</button></form><h2>Участники</h2><table><tr><th>ID</th><th>Token</th><th>Этап</th><th>Финиш</th><th>Блок до</th></tr>{rows}</table></main>"))
+
+    def render_quest_form(self, quest_id=None):
+        c = db()
+        cur = c.cursor()
+        quest = None
+        steps = []
+        if quest_id:
+            quest = cur.execute('SELECT * FROM quests WHERE id=?', (quest_id,)).fetchone()
+            if not quest:
+                self.send_html(error_page(404, 'Не найдено', 'Квест не найден'), 404); return
+            steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
+        steps_block = ''.join([
+            f"<fieldset><legend>Этап {s['idx']}</legend><input name='step_{s['idx']}_prompt' value='{html_lib.escape(s['prompt'])}' placeholder='Подсказка' maxlength='256' required><input name='step_{s['idx']}_password' value='{html_lib.escape(s['password'])}' placeholder='Пароль' maxlength='128' required><input name='step_{s['idx']}_time' value='{s['step_time_limit_sec'] or ''}' placeholder='Лимит сек, опционально'></fieldset>"
+            for s in steps
+        ]) or "<p>Добавьте минимум 1 этап.</p>"
+        delete_form = ""
+        if quest_id:
+            delete_form = f"<form method='post' action='/admin/quest/delete'><input type='hidden' name='quest_id' value='{quest_id}'><button>Удалить квест</button></form>"
+        self.send_html(html(f"<main class='card'><h1>{'Редактирование' if quest_id else 'Новый'} квест</h1><form method='post' action='/admin/quest/save'><input type='hidden' name='quest_id' value='{quest_id or ''}'><input name='title' placeholder='Название' maxlength='128' value='{html_lib.escape(quest['title']) if quest else ''}' required><input name='final_location' placeholder='Финальная локация' maxlength='256' value='{html_lib.escape(quest['final_location']) if quest else ''}' required><input name='quest_time_limit_sec' placeholder='Лимит квеста в сек, опционально' value='{quest['quest_time_limit_sec'] if quest and quest['quest_time_limit_sec'] else ''}'>{steps_block}<textarea name='steps_new' placeholder='Новые этапы: подсказка|пароль|лимит_сек; по одному на строку'></textarea><button>Сохранить</button></form>{delete_form}<p><a href='/admin'>Назад</a></p></main>"))
+
+    def save_quest(self, data):
+        quest_id = parse_int(data.get('quest_id', [''])[0], minimum=1)
+        title = sanitize_text(data.get('title', [''])[0], 128)
+        final_location = sanitize_text(data.get('final_location', [''])[0], 256)
+        quest_limit = parse_int(data.get('quest_time_limit_sec', [''])[0], default=None, minimum=1)
+        if not title or not final_location:
+            self.send_html(error_page(400, 'Некорректные данные', 'Нужны title и final_location'), 400); return
+        c = db(); cur = c.cursor()
+        if quest_id:
+            cur.execute('UPDATE quests SET title=?, final_location=?, quest_time_limit_sec=? WHERE id=?', (title, final_location, quest_limit, quest_id))
+        else:
+            cur.execute('INSERT INTO quests(title, final_location, active, quest_time_limit_sec) VALUES (?,?,1,?)', (title, final_location, quest_limit))
+            quest_id = cur.lastrowid
+        existing_steps = cur.execute('SELECT idx FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
+        for row in existing_steps:
+            idx = row['idx']
+            prompt = sanitize_text(data.get(f'step_{idx}_prompt', [''])[0], 256)
+            password = sanitize_text(data.get(f'step_{idx}_password', [''])[0], 128)
+            step_limit = parse_int(data.get(f'step_{idx}_time', [''])[0], default=None, minimum=1)
+            if prompt and password:
+                cur.execute('UPDATE steps SET prompt=?, password=?, step_time_limit_sec=? WHERE quest_id=? AND idx=?', (prompt, password, step_limit, quest_id, idx))
+        new_steps_raw = data.get('steps_new', [''])[0]
+        for line in new_steps_raw.splitlines():
+            chunks = [sanitize_text(x, 256) for x in line.split('|')]
+            if len(chunks) < 2 or not chunks[0] or not chunks[1]:
+                continue
+            step_limit = parse_int(chunks[2] if len(chunks) > 2 else '', default=None, minimum=1)
+            next_idx = cur.execute('SELECT COALESCE(MAX(idx), 0) m FROM steps WHERE quest_id=?', (quest_id,)).fetchone()['m'] + 1
+            cur.execute('INSERT INTO steps(quest_id,idx,prompt,password,step_time_limit_sec) VALUES (?,?,?,?,?)', (quest_id, next_idx, chunks[0], chunks[1], step_limit))
+        c.commit()
+        logger.info('Admin saved quest quest_id=%s', quest_id)
+        self.send_response(303); self.send_header('Location', '/admin'); self.end_headers()
+
+    def delete_quest(self, data):
+        quest_id = parse_int(data.get('quest_id', [''])[0], minimum=1)
+        if not quest_id:
+            self.send_html(error_page(400, 'Некорректные данные', 'quest_id обязателен'), 400); return
+        c = db(); cur = c.cursor()
+        cur.execute('DELETE FROM attempts WHERE participant_id IN (SELECT id FROM participants WHERE quest_id=?)', (quest_id,))
+        cur.execute('DELETE FROM participants WHERE quest_id=?', (quest_id,))
+        cur.execute('DELETE FROM steps WHERE quest_id=?', (quest_id,))
+        cur.execute('DELETE FROM quests WHERE id=?', (quest_id,))
+        c.commit()
+        logger.warning('Admin deleted quest quest_id=%s', quest_id)
+        self.send_response(303); self.send_header('Location', '/admin'); self.end_headers()
+
+    def toggle_quest_active(self, data):
+        quest_id = parse_int(data.get('quest_id', [''])[0], minimum=1)
+        if not quest_id:
+            self.send_html(error_page(400, 'Некорректные данные', 'quest_id обязателен'), 400); return
+        c = db(); cur = c.cursor()
+        quest = cur.execute('SELECT * FROM quests WHERE id=?', (quest_id,)).fetchone()
+        if not quest:
+            self.send_html(error_page(404, 'Не найдено', 'Квест не найден'), 404); return
+        if quest['active']:
+            active_players = cur.execute('SELECT COUNT(*) c FROM participants WHERE quest_id=? AND completed=0', (quest_id,)).fetchone()['c']
+            if active_players > 0:
+                self.send_html(error_page(409, 'Нельзя деактивировать', 'Есть активные участники в процессе.'), 409); return
+        cur.execute('UPDATE quests SET active=? WHERE id=?', (0 if quest['active'] else 1, quest_id))
+        c.commit()
+        logger.info('Admin toggled quest active=%s quest_id=%s', 0 if quest['active'] else 1, quest_id)
+        self.send_response(303); self.send_header('Location', '/admin'); self.end_headers()
 
 
 if __name__ == '__main__':
