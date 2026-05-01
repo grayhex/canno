@@ -68,7 +68,12 @@ docker compose up -d --build
 python3 backup_db.py --db canno.db --out-dir backups
 ```
 
-Рекомендуется выполнять по расписанию (cron/systemd timer) и хранить копии на внешнем хранилище.
+Регламент резервного копирования (минимум):
+
+- Частота: каждые 6 часов.
+- Хранение: локально минимум 7 суток + удаленная копия (S3/NAS/объектное хранилище) минимум 30 суток.
+- Ротация: ежедневно удалять локальные копии старше 7 дней, удаленные — старше 30 дней.
+- Проверка целостности: ежедневно запускать проверку открытия backup-файла и `PRAGMA integrity_check`; минимум 1 раз в неделю выполнять test-restore (см. `TESTING.md`).
 
 ## 7) Откат
 
@@ -76,7 +81,53 @@ python3 backup_db.py --db canno.db --out-dir backups
 2. Восстановите БД из бэкапа.
 3. Поднимите сервис снова: `docker compose up -d`.
 
-## 8) Минимальные production-рекомендации
+## 8) Аварийное восстановление (Disaster Recovery)
+
+### Целевые показатели
+
+- **RPO (Recovery Point Objective):** до 6 часов потери данных.
+- **RTO (Recovery Time Objective):** до 60 минут на восстановление сервиса.
+
+### Шаги восстановления
+
+1. Зафиксируйте инцидент и остановите запись в систему:
+
+```bash
+docker compose down
+```
+
+2. Выберите последний корректный backup (предпочтительно проверенный nightly/weekly валидацией).
+3. Восстановите рабочую БД:
+
+```bash
+cp backups/<backup-file>.db canno.db
+```
+
+4. Проверьте целостность:
+
+```bash
+python3 - <<'PY'
+import sqlite3
+conn = sqlite3.connect("canno.db")
+cur = conn.cursor()
+cur.execute("PRAGMA integrity_check;")
+print(cur.fetchone()[0])
+conn.close()
+PY
+```
+
+5. Поднимите приложение:
+
+```bash
+docker compose up -d
+```
+
+6. Проведите smoke-проверку:
+   - вход в `/admin/login`;
+   - открытие `/play/<token>`;
+   - проверка логов `docker compose logs -f app`.
+
+## 9) Минимальные production-рекомендации
 
 - Использовать reverse proxy (Nginx/Caddy) + TLS.
 - Ограничить доступ к Docker socket и SSH.
