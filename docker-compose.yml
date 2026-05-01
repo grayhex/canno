@@ -1,0 +1,29 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      CANNO_ADMIN_USER: ${CANNO_ADMIN_USER:-admin}
+      CANNO_ADMIN_PASSWORD: ${CANNO_ADMIN_PASSWORD:-change-me}
+      CANNO_LOG_LEVEL: ${CANNO_LOG_LEVEL:-INFO}
+      CANNO_DB_ENGINE: ${CANNO_DB_ENGINE:-sqlite}
+      CANNO_DB_PATH: ${CANNO_DB_PATH:-/data/canno.db}
+      CANNO_DATABASE_URL: ${CANNO_DATABASE_URL:-}
+    volumes:
+      - canno_data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: canno
+      POSTGRES_USER: canno
+      POSTGRES_PASSWORD: canno
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  canno_data:
+  pg_data:
