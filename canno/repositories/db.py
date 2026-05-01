@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from urllib.parse import urlparse
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 class BaseRepository:
@@ -20,9 +21,15 @@ class SqliteRepository(BaseRepository):
 
     def connect(self):
         parsed = urlparse(self.database_url)
-        path = parsed.path or self.database_url
-        if path.startswith('//'):
-            path = path[1:]
+        if parsed.scheme == 'sqlite':
+            path = unquote(f'{parsed.netloc}{parsed.path}')
+            if not path:
+                path = ':memory:'
+        else:
+            path = self.database_url
+        if path != ':memory:':
+            parent = Path(path).expanduser().absolute().parent
+            parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(path)
         conn.row_factory = sqlite3.Row
         return conn
