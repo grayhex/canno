@@ -83,7 +83,7 @@ python3 -m unittest -v
 
 ## P2: инфраструктура и эксплуатация
 
-Статус на 2026-05-01: 🚧 в работе (выполнены P2.9 и P2.11, подготовка к P2.10).
+Статус на 2026-05-01: ✅ P2.9–P2.11 закрыты.
 
 - Добавлены `Dockerfile` и `docker-compose.yml` для запуска одной командой `docker compose up --build`.
 - В `docker-compose.yml` есть профиль `postgres` для стендов, где требуется СУБД контейнером (`docker compose --profile postgres up`).
@@ -91,4 +91,9 @@ python3 -m unittest -v
 - Добавлен CI-пайплайн GitHub Actions (`.github/workflows/ci.yml`):
   - автоматический запуск `python -m unittest -v`;
   - проверка сборки Docker-образа (`docker build`).
-- Для перехода на Postgres добавлены инфраструктурные переменные `CANNO_DB_ENGINE` и `CANNO_DATABASE_URL` (логика переключения будет подключаться в рамках P2.10).
+- Подготовлен режим запуска с Postgres через compose-профиль `postgres` и переменную `CANNO_DATABASE_URL`.
+
+
+## Деплой
+
+Пошаговая инструкция по production-развертыванию вынесена в отдельный документ: `DEPLOY.md`.
