@@ -98,7 +98,15 @@ CREATE TABLE IF NOT EXISTS attempts (
   FOREIGN KEY(participant_id) REFERENCES participants(id)
 );
 ''')
-    c.commit()
+        cur.execute('INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)', (1, now()))
+        conn.commit()
+        logger.info('Applied migration v1')
+
+
+def init_db():
+    c = db()
+    cur = c.cursor()
+    apply_migrations(c)
     q = cur.execute('SELECT COUNT(*) c FROM quests').fetchone()['c']
     if q == 0:
         cur.execute('INSERT INTO quests(title, final_location, active, quest_time_limit_sec) VALUES (?,?,?,?)',
@@ -115,7 +123,7 @@ CREATE TABLE IF NOT EXISTS attempts (
         cur.execute('INSERT INTO participants(quest_id, token, started_at, step_started_at) VALUES (?,?,?,?)',
                     (quest_id, token, now(), now()))
         c.commit()
-        print(f'Demo player URL: http://localhost:8000/play/{token}')
+        logger.info('Demo player URL: http://localhost:8000/play/%s', token)
     c.close()
 
 
@@ -129,7 +137,14 @@ def html(body):
     return f"""<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Canno Quest</title><link rel='stylesheet' href='/static.css'></head><body>{body}</body></html>"""
 
 
+def error_page(code, title, message):
+    return html(f"<main class='card'><h1>{code}: {html_lib.escape(title)}</h1><p>{html_lib.escape(message)}</p></main>")
+
+
 class H(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        logger.info('%s - %s', self.address_string(), format % args)
+
     def send_html(self, text, status=200):
         self.send_response(status)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -277,6 +292,7 @@ class H(BaseHTTPRequestHandler):
         success = int(cleaned_password == step['password'])
         cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned_password, success, now()))
         if success:
+            STEP_ATTEMPTS.pop(step_key, None)
             if p['current_step'] >= len(steps):
                 cur.execute('UPDATE participants SET completed=1 WHERE id=?', (p['id'],))
             else:
@@ -293,4 +309,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     init_db()
+    logger.info('Starting HTTP server on 0.0.0.0:8000')
     HTTPServer(('0.0.0.0', 8000), H).serve_forever()
