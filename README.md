@@ -79,3 +79,16 @@ cp backups/canno_YYYYMMDDTHHMMSSZ.db canno.db
 ```bash
 python3 -m unittest -v
 ```
+
+
+## P2: инфраструктура и эксплуатация
+
+Статус на 2026-05-01: 🚧 в работе (выполнены P2.9 и P2.11, подготовка к P2.10).
+
+- Добавлены `Dockerfile` и `docker-compose.yml` для запуска одной командой `docker compose up --build`.
+- В `docker-compose.yml` есть профиль `postgres` для стендов, где требуется СУБД контейнером (`docker compose --profile postgres up`).
+- Добавлен шаблон `.env.example` с разделением окружений (dev/stage/prod) через env-переменные.
+- Добавлен CI-пайплайн GitHub Actions (`.github/workflows/ci.yml`):
+  - автоматический запуск `python -m unittest -v`;
+  - проверка сборки Docker-образа (`docker build`).
+- Для перехода на Postgres добавлены инфраструктурные переменные `CANNO_DB_ENGINE` и `CANNO_DATABASE_URL` (логика переключения будет подключаться в рамках P2.10).
