@@ -1,135 +1,178 @@
-# Деплой Canno Quest
+# Deploy Canno Quest (Production)
 
-Документ описывает базовый production-деплой через Docker Compose.
+Обновлено: **2026-05-01**.
 
-## 1) Предварительные требования
+Этот документ описывает практичный деплой на ваш Linux-сервер через Docker Compose: с SQLite (самый простой вариант) или с Postgres (рекомендуется для более высокой нагрузки).
 
-- Linux-сервер с установленными Docker и Docker Compose Plugin.
-- Открыт порт приложения (по умолчанию `8000/tcp`) либо настроен reverse proxy.
-- Доступ к репозиторию проекта.
+---
 
-## 2) Подготовка окружения
+## 1. Что нужно на сервере
 
-1. Склонируйте репозиторий и перейдите в директорию проекта.
-2. Создайте файл окружения из шаблона:
+- Linux-сервер (Ubuntu/Debian/CentOS и т.п.).
+- Установленные Docker Engine + Docker Compose Plugin.
+- Открытый порт приложения (по умолчанию `8000/tcp`) **или** reverse proxy (Nginx/Caddy) перед приложением.
+- SSH-доступ к серверу и доступ к репозиторию.
+
+Проверка:
 
 ```bash
+docker --version
+docker compose version
+```
+
+---
+
+## 2. Подготовка проекта
+
+```bash
+git clone <YOUR_REPOSITORY_URL> canno
+cd canno
 cp .env.example .env
 ```
 
-3. Обязательно задайте безопасные значения:
-   - `CANNO_ADMIN_USER`
-   - `CANNO_ADMIN_PASSWORD_HASH` (предпочтительно) или `CANNO_ADMIN_PASSWORD`
-   - `CANNO_SECRET_KEY`
-4. Проверьте БД-настройки:
-   - для SQLite: `CANNO_DB_ENGINE=sqlite`
-   - для Postgres-окружения: включите профиль compose `postgres` и задайте `CANNO_DATABASE_URL`
+Обязательно задайте в `.env`:
 
-## 3) Запуск приложения
+- `CANNO_ADMIN_USER`
+- `CANNO_ADMIN_PASSWORD_HASH` (предпочтительно)
+- `CANNO_SECRET_KEY` (длинный случайный ключ)
 
-### Вариант A: SQLite (по умолчанию)
+> Если нет готового hash-пароля, временно укажите `CANNO_ADMIN_PASSWORD`, запустите сервис и затем переведите конфиг на `CANNO_ADMIN_PASSWORD_HASH`.
+
+Быстрая генерация секрета:
+
+```bash
+python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+```
+
+---
+
+## 3. Запуск (SQLite)
+
+Самый простой и быстрый production-режим:
 
 ```bash
 docker compose up -d --build
 ```
 
-### Вариант B: с Postgres-контейнером
+Проверки:
+
+```bash
+docker compose ps
+docker compose logs -f web
+```
+
+Приложение будет доступно на:
+
+- `http://<SERVER_IP>:8000`
+- login: `http://<SERVER_IP>:8000/admin/login`
+
+---
+
+## 4. Запуск с Postgres (опционально)
+
+Если хотите использовать Postgres-контейнер:
+
+1) В `.env` задайте:
+
+```dotenv
+CANNO_DB_ENGINE=postgres
+CANNO_DATABASE_URL=postgresql://canno:canno@postgres:5432/canno
+```
+
+2) Поднимите стек с профилем:
 
 ```bash
 docker compose --profile postgres up -d --build
 ```
 
-После старта проверьте доступность приложения: `http://<server-ip>:8000`.
+---
 
-## 4) Проверка после деплоя
+## 5. Reverse proxy и TLS (рекомендуется)
 
-- Откройте `/admin/login` и выполните вход админом.
-- Создайте тестового участника и убедитесь, что ссылка `/play/<token>` открывается.
-- Проверьте логи:
+Минимально безопасная production-схема:
+
+- Canno слушает только внутренний порт `8000`.
+- Снаружи публикуется только Nginx/Caddy (`80/443`).
+- TLS-сертификат: Let's Encrypt.
+
+Это дает:
+
+- HTTPS для админки,
+- централизованный доступ/логи,
+- проще ограничивать доступ по IP/VPN.
+
+---
+
+## 6. Обновление приложения
 
 ```bash
-docker compose logs -f app
-```
-
-## 5) Обновление на новую версию
-
-```bash
+cd canno
 git pull
 docker compose up -d --build
 ```
 
-Если менялась схема БД, миграции применятся при старте приложения автоматически (`apply_migrations()`).
+Если менялась схема БД, миграции применяются при старте автоматически (`apply_migrations()`).
 
-## 6) Резервное копирование
+---
 
-Для SQLite-базы:
+## 7. Бэкапы и восстановление
+
+Создание бэкапа SQLite:
 
 ```bash
 python3 backup_db.py --db canno.db --out-dir backups
 ```
 
-Регламент резервного копирования (минимум):
+Минимальная политика:
 
-- Частота: каждые 6 часов.
-- Хранение: локально минимум 7 суток + удаленная копия (S3/NAS/объектное хранилище) минимум 30 суток.
-- Ротация: ежедневно удалять локальные копии старше 7 дней, удаленные — старше 30 дней.
-- Проверка целостности: ежедневно запускать проверку открытия backup-файла и `PRAGMA integrity_check`; минимум 1 раз в неделю выполнять test-restore (см. `TESTING.md`).
+- каждые 6 часов;
+- локальное хранение 7 дней;
+- удаленная копия (S3/NAS) 30+ дней;
+- еженедельный test-restore.
 
-## 7) Откат
-
-1. Остановите приложение: `docker compose down`.
-2. Восстановите БД из бэкапа.
-3. Поднимите сервис снова: `docker compose up -d`.
-
-## 8) Аварийное восстановление (Disaster Recovery)
-
-### Целевые показатели
-
-- **RPO (Recovery Point Objective):** до 6 часов потери данных.
-- **RTO (Recovery Time Objective):** до 60 минут на восстановление сервиса.
-
-### Шаги восстановления
-
-1. Зафиксируйте инцидент и остановите запись в систему:
+Восстановление:
 
 ```bash
 docker compose down
-```
-
-2. Выберите последний корректный backup (предпочтительно проверенный nightly/weekly валидацией).
-3. Восстановите рабочую БД:
-
-```bash
 cp backups/<backup-file>.db canno.db
+docker compose up -d
 ```
 
-4. Проверьте целостность:
+Проверка целостности:
 
 ```bash
 python3 - <<'PY'
 import sqlite3
-conn = sqlite3.connect("canno.db")
+conn = sqlite3.connect('canno.db')
 cur = conn.cursor()
-cur.execute("PRAGMA integrity_check;")
+cur.execute('PRAGMA integrity_check;')
 print(cur.fetchone()[0])
 conn.close()
 PY
 ```
 
-5. Поднимите приложение:
+---
 
-```bash
-docker compose up -d
-```
+## 8. Smoke-check после деплоя
 
-6. Проведите smoke-проверку:
-   - вход в `/admin/login`;
-   - открытие `/play/<token>`;
-   - проверка логов `docker compose logs -f app`.
+- Открывается `/admin/login`.
+- Удается зайти под админом.
+- Генерируется ссылка участника.
+- Ссылка `/play/<token>` открывается.
+- `docker compose ps` показывает `healthy` для `web`.
 
-## 9) Минимальные production-рекомендации
+---
 
-- Использовать reverse proxy (Nginx/Caddy) + TLS.
-- Ограничить доступ к Docker socket и SSH.
-- Включить ротацию логов Docker.
-- Вынести секреты в защищенное хранилище.
+## 9. Hardening checklist
+
+- [ ] `CANNO_SECRET_KEY` не дефолтный.
+- [ ] Не использовать `change-me`/простые пароли.
+- [ ] Секреты не хранятся в git.
+- [ ] Есть firewall (например, UFW/security group).
+- [ ] Настроен fail2ban/SSH hardening.
+- [ ] Включена ротация Docker-логов.
+- [ ] Настроен мониторинг (uptime + alerting).
+
