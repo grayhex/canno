@@ -136,6 +136,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     if not quest_id:
                         self.send_html(error_page(400, 'Некорректные данные', 'id квеста обязателен'), 400); return
                     self.render_quest_form(quest_id); return
+                if p.path == '/admin/quests/export.json':
+                    if not self.require_admin(): return
+                    self.export_quests_json(); return
+                if p.path == '/admin/runs/archive':
+                    if not self.require_admin(): return
+                    self.archive_completed_runs(); return
                 self.send_html(error_page(404, 'Не найдено', 'Страница не существует.'), 404)
             except Exception:
                 logger.exception('Unhandled GET error')
@@ -148,6 +154,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             data = parse_qs(raw_body)
             if p.path == '/admin/login':
                 return self.handle_login(data)
+            if p.path == '/admin/quests/import':
+                if not self.require_admin(): return
+                return self.import_quest_json(data)
             if p.path.startswith('/play/'):
                 return self.submit_password(service.sanitize_text(p.path.split('/play/')[1], 128), data.get('password', [''])[0])
             self.send_json({'error': 'not found'}, 404)
@@ -208,6 +217,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
                 if not q['active']: self.send_html(html("<main class='card'><h2>Квест временно закрыт</h2><p>Свяжитесь с организатором и попробуйте позже.</p></main>")); return
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
+                locale = service.sanitize_text(parse_qs(urlparse(self.path).query).get('lang', ['ru'])[0], 8)
+                prompt = step['prompt_en'] if locale == 'en' and step['prompt_en'] else step['prompt']
                 progress = int((p['current_step'] - 1) / len(steps) * 100)
                 remaining_html = ''
                 if step and step['step_time_limit_sec'] and p['step_started_at']:
@@ -215,7 +226,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     deadline = started_at + timedelta(seconds=step['step_time_limit_sec'])
                     remaining = (deadline - service.now_dt()).total_seconds()
                     remaining_html = f"<div class='timer-wrap'><p class='muted'>Осталось времени на этап</p><p id='step-timer' class='timer' data-remaining='{int(remaining)}' data-warning='120'>{self.format_seconds(remaining)}</p><p id='step-warning' class='warning hidden'>Мало времени — попробуйте самый очевидный вариант ответа.</p></div>"
-                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(q['title'])}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(step['prompt'])}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
+                title = q['title_en'] if locale == 'en' and q['title_en'] else q['title']
+                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
             finally:
                 c.close()
 
@@ -232,6 +244,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
                 cleaned = service.sanitize_text(password, 128)
                 success = int(cleaned == step['password'])
+                if step['max_attempts']:
+                    failed_count = cur.execute('SELECT COUNT(*) AS c FROM attempts WHERE participant_id=? AND step_idx=? AND success=0', (p['id'], p['current_step'])).fetchone()['c']
+                    if failed_count >= step['max_attempts']:
+                        cur.execute("UPDATE participants SET status='locked' WHERE id=?", (p['id'],))
+                        c.commit()
+                        self.send_html(html("<main class='card'><p>Лимит попыток на этапе исчерпан.</p></main>"), 423); return
                 cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned, success, service.now()))
                 if success:
                     auth_store.clear_attempts("step", key)
@@ -239,10 +257,14 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                         cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
                         self.audit('player', 'participant.completion', target=f'participant:{p["id"]}', metadata={'participant_id': p['id'], 'token': token, 'quest_id': p['quest_id']})
                     else:
-                        cur.execute("UPDATE participants SET current_step=current_step+1, step_started_at=?, status='in_progress' WHERE id=?", (service.now(), p['id']))
+                        next_idx = step['next_on_success_idx'] or (p['current_step'] + 1)
+                        cur.execute("UPDATE participants SET current_step=?, step_started_at=?, status='in_progress' WHERE id=?", (next_idx, service.now(), p['id']))
                     c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
                 c.commit()
                 self._record_attempt("step", key)
+                if step['penalty_sec']:
+                    cur.execute("UPDATE participants SET step_started_at=? WHERE id=?", ((service.now_dt() - timedelta(seconds=step['penalty_sec'])).isoformat(), p['id']))
+                    c.commit()
                 hint = self.player_hint(p['current_step'])
                 self.send_html(html(f"<main class='card'><h2>Пока не подошло</h2><p>Неверный пароль. Проверьте раскладку клавиатуры и попробуйте ещё раз.</p><p class='hint'>Подсказка: {html_lib.escape(hint)}</p><a href='/play/{token}'>Вернуться к этапу</a></main>"))
             finally:
@@ -259,7 +281,51 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
-            self.send_html(html("<main class='card'><h1>Квест</h1></main>"))
+            self.send_html(html("<main class='card'><h1>Квест</h1><p><a href='/admin/quests/export.json'>Экспорт квестов JSON</a></p><form method='post' action='/admin/quests/import'><textarea name='payload' rows='12' placeholder='JSON payload'></textarea><button>Импортировать JSON</button></form><p><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></p></main>"))
+
+        def export_quests_json(self):
+            c = repo.connect()
+            quests = [dict(r) for r in c.execute('SELECT * FROM quests ORDER BY id').fetchall()]
+            for q in quests:
+                q['steps'] = [dict(s) for s in c.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (q['id'],)).fetchall()]
+            c.close()
+            self.send_json({'quests': quests})
+
+        def import_quest_json(self, data):
+            payload = data.get('payload', ['{}'])[0]
+            body = json.loads(payload)
+            c = repo.connect(); cur = c.cursor()
+            for quest in body.get('quests', []):
+                cur.execute('INSERT INTO quests(title,title_en,final_location,active,quest_time_limit_sec) VALUES (?,?,?,?,?)', (
+                    service.sanitize_text(quest.get('title', ''), 256),
+                    service.sanitize_text(quest.get('title_en', ''), 256),
+                    service.sanitize_text(quest.get('final_location', ''), 512),
+                    int(quest.get('active', 1)),
+                    quest.get('quest_time_limit_sec'),
+                ))
+                quest_id = cur.lastrowid
+                version = cur.execute('SELECT COALESCE(MAX(version),0)+1 AS v FROM quest_versions WHERE quest_id=?', (quest_id,)).fetchone()['v']
+                cur.execute('INSERT INTO quest_versions(quest_id,version,payload_json,created_at) VALUES (?,?,?,?)', (quest_id, version, json.dumps(quest, ensure_ascii=False), service.now()))
+                for step in quest.get('steps', []):
+                    cur.execute('INSERT INTO steps(quest_id,idx,prompt,prompt_en,password,step_time_limit_sec,next_on_success_idx,max_attempts,penalty_sec) VALUES (?,?,?,?,?,?,?,?,?)', (
+                        quest_id, step.get('idx'), step.get('prompt'), step.get('prompt_en', ''), step.get('password'), step.get('step_time_limit_sec'),
+                        step.get('next_on_success_idx'), step.get('max_attempts'), step.get('penalty_sec'),
+                    ))
+            c.commit(); c.close()
+            self.send_response(303); self.send_header('Location', '/admin/quest/new'); self.end_headers()
+
+        def archive_completed_runs(self):
+            c = repo.connect(); cur = c.cursor()
+            rows = cur.execute("SELECT * FROM participants WHERE completed=1").fetchall()
+            for row in rows:
+                attempts = [dict(a) for a in cur.execute('SELECT * FROM attempts WHERE participant_id=? ORDER BY id', (row['id'],)).fetchall()]
+                cur.execute('INSERT INTO quest_run_archive(participant_id,quest_id,token,status,completed,archived_at,payload_json) VALUES (?,?,?,?,?,?,?)', (
+                    row['id'], row['quest_id'], row['token'], row['status'], row['completed'], service.now(), json.dumps({'participant': dict(row), 'attempts': attempts}, ensure_ascii=False),
+                ))
+                cur.execute('DELETE FROM attempts WHERE participant_id=?', (row['id'],))
+                cur.execute('DELETE FROM participants WHERE id=?', (row['id'],))
+            c.commit(); c.close()
+            self.send_html(html(f"<main class='card'><h2>Архивировано запусков: {len(rows)}</h2></main>"))
 
         def render_audit(self, query):
             params = parse_qs(query)
