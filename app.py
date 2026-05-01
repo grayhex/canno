@@ -6,6 +6,7 @@ import logging
 import os
 import secrets
 import sqlite3
+from collections import defaultdict
 from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -119,6 +120,11 @@ CREATE TABLE attempts (
 ''')
         cur.execute('INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)', (1, now()))
         logger.info('Applied migration v1')
+
+    if version < 2:
+        cur.execute("ALTER TABLE participants ADD COLUMN status TEXT NOT NULL DEFAULT 'new'")
+        cur.execute('INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)', (2, now()))
+        logger.info('Applied migration v2')
 
     conn.commit()
 
@@ -250,6 +256,14 @@ class H(BaseHTTPRequestHandler):
                 if not self.require_admin():
                     return
                 self.render_admin(); return
+            if p.path == '/admin/participants/export.csv':
+                if not self.require_admin():
+                    return
+                self.export_participants_csv(); return
+            if p.path == '/admin/metrics':
+                if not self.require_admin():
+                    return
+                self.render_metrics(p.query); return
             if p.path == '/admin/quest/new':
                 if not self.require_admin():
                     return
@@ -292,6 +306,14 @@ class H(BaseHTTPRequestHandler):
                 c.close()
                 logger.info('Admin created participant token for quest_id=%s', quest_id)
                 self.send_html(html(f"<main class='card'><p>Ссылка: <a href='/play/{token}'>/play/{token}</a></p><a href='/admin'>Назад</a></main>")); return
+            if p.path == '/admin/create-participants-bulk':
+                if not self.require_admin():
+                    return
+                self.create_participants_bulk(data); return
+            if p.path == '/admin/participant/reset':
+                if not self.require_admin():
+                    return
+                self.reset_participant(data); return
             if p.path == '/admin/quest/save':
                 if not self.require_admin():
                     return
@@ -359,10 +381,14 @@ class H(BaseHTTPRequestHandler):
         q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
         steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
         if not q['active']: self.send_html(html("<main class='card'><h2>Квест закрыт админом</h2></main>")); return
+        if p['status'] == 'locked':
+            self.send_html(html("<main class='card'><h2>Участник заблокирован администратором</h2></main>")); return
         if p['locked_until'] and datetime.fromisoformat(p['locked_until']) > now_dt():
             logger.info('Participant token=%s is locked until %s', token, p['locked_until'])
             self.send_html(html(f"<main class='card'><h2>До завтра недоступно</h2><p>Возвращайтесь после: {p['locked_until']}</p></main>")); return
         if p['completed']:
+            cur.execute("UPDATE participants SET status='completed' WHERE id=?", (p['id'],))
+            c.commit()
             self.send_html(html(f"<main class='card'><h2>Финиш!</h2><p>Приз находится: <b>{html_lib.escape(q['final_location'])}</b></p></main>")); return
         step = next((s for s in steps if s['idx'] == p['current_step']), None)
         if not step:
@@ -401,10 +427,10 @@ class H(BaseHTTPRequestHandler):
             logger.info('Step solved for participant_id=%s token=%s step=%s', p['id'], token, p['current_step'])
             STEP_ATTEMPTS.pop(attempt_key, None)
             if p['current_step'] >= len(steps):
-                cur.execute('UPDATE participants SET completed=1 WHERE id=?', (p['id'],))
+                cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
                 logger.info('Quest completed for participant_id=%s token=%s', p['id'], token)
             else:
-                cur.execute('UPDATE participants SET current_step=current_step+1, step_started_at=? WHERE id=?', (now(), p['id']))
+                cur.execute("UPDATE participants SET current_step=current_step+1, step_started_at=?, status='in_progress' WHERE id=?", (now(), p['id']))
             c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
         logger.warning('Wrong step password for participant_id=%s token=%s step=%s', p['id'], token, p['current_step'])
         self._record_attempt(STEP_ATTEMPTS, attempt_key, STEP_ATTEMPT_WINDOW_SECONDS)
@@ -413,14 +439,69 @@ class H(BaseHTTPRequestHandler):
     def render_admin(self):
         c = db(); cur = c.cursor(); quests = cur.execute('SELECT * FROM quests ORDER BY id DESC').fetchall(); parts = cur.execute('SELECT * FROM participants ORDER BY id DESC').fetchall()
         qopts = ''.join([f"<option value='{q['id']}'>{html_lib.escape(q['title'])}</option>" for q in quests if q['active']])
-        rows = ''.join([f"<tr><td>{p['id']}</td><td><a href='/play/{p['token']}'>{p['token']}</a></td><td>{p['current_step']}</td><td>{'да' if p['completed'] else 'нет'}</td><td>{p['locked_until'] or '-'}</td></tr>" for p in parts])
+        rows = ''.join([f"<tr><td>{p['id']}</td><td><a href='/play/{p['token']}'>{p['token']}</a></td><td>{p['status']}</td><td>{p['current_step']}</td><td>{'да' if p['completed'] else 'нет'}</td><td>{p['locked_until'] or '-'}</td><td><form method='post' action='/admin/participant/reset'><input type='hidden' name='participant_id' value='{p['id']}'><button>Сброс</button></form></td></tr>" for p in parts])
         quest_rows = ''.join([
             f"<tr><td>{q['id']}</td><td>{html_lib.escape(q['title'])}</td><td>{'да' if q['active'] else 'нет'}</td>"
             f"<td><a href='/admin/quest/edit?id={q['id']}'>Редактировать</a></td>"
             f"<td><form method='post' action='/admin/quest/toggle-active'><input type='hidden' name='quest_id' value='{q['id']}'><button>{'Деактивировать' if q['active'] else 'Активировать'}</button></form></td></tr>"
             for q in quests
         ])
-        self.send_html(html(f"<main class='card'><h1>Админка</h1><p><a href='/admin/logout'>Выйти</a></p><p><a href='/admin/quest/new'>Создать квест</a></p><h2>Квесты</h2><table><tr><th>ID</th><th>Название</th><th>Активен</th><th></th><th></th></tr>{quest_rows}</table><form method='post' action='/admin/create-participant'><select name='quest_id'>{qopts}</select><button>Сгенерировать ссылку участника</button></form><h2>Участники</h2><table><tr><th>ID</th><th>Token</th><th>Этап</th><th>Финиш</th><th>Блок до</th></tr>{rows}</table></main>"))
+        self.send_html(html(f"<main class='card'><h1>Админка</h1><p><a href='/admin/logout'>Выйти</a> · <a href='/admin/metrics'>Метрики</a></p><p><a href='/admin/quest/new'>Создать квест</a></p><h2>Квесты</h2><table><tr><th>ID</th><th>Название</th><th>Активен</th><th></th><th></th></tr>{quest_rows}</table><form method='post' action='/admin/create-participant'><select name='quest_id'>{qopts}</select><button>Сгенерировать ссылку участника</button></form><form method='post' action='/admin/create-participants-bulk'><select name='quest_id'>{qopts}</select><input name='count' value='10' placeholder='Кол-во' maxlength='4'><button>Массово создать</button></form><p><a href='/admin/participants/export.csv'>Экспорт участников CSV</a></p><h2>Участники</h2><table><tr><th>ID</th><th>Token</th><th>Статус</th><th>Этап</th><th>Финиш</th><th>Блок до</th><th></th></tr>{rows}</table></main>"))
+
+    def reset_participant(self, data):
+        participant_id = parse_int(data.get('participant_id', [''])[0], minimum=1)
+        if not participant_id:
+            self.send_html(error_page(400, 'Некорректные данные', 'participant_id обязателен'), 400); return
+        c = db(); cur = c.cursor()
+        cur.execute("UPDATE participants SET current_step=1, started_at=?, step_started_at=?, locked_until=NULL, completed=0, status='new' WHERE id=?", (now(), now(), participant_id))
+        c.commit()
+        logger.info('Admin reset participant participant_id=%s', participant_id)
+        self.send_response(303); self.send_header('Location', '/admin'); self.end_headers()
+
+    def create_participants_bulk(self, data):
+        quest_id = parse_int(data.get('quest_id', [''])[0], minimum=1)
+        count = parse_int(data.get('count', [''])[0], default=10, minimum=1)
+        if not quest_id or not count:
+            self.send_html(error_page(400, 'Некорректные данные', 'quest_id/count обязательны'), 400); return
+        count = min(count, 500)
+        c = db(); cur = c.cursor()
+        tokens = []
+        for _ in range(count):
+            token = secrets.token_urlsafe(8)
+            tokens.append(token)
+            cur.execute("INSERT INTO participants(quest_id,token,started_at,step_started_at,status) VALUES (?,?,?,?, 'new')", (quest_id, token, now(), now()))
+        c.commit()
+        links = ''.join([f"<li><a href='/play/{t}'>/play/{t}</a></li>" for t in tokens[:50]])
+        suffix = "<p>Показаны первые 50 ссылок.</p>" if len(tokens) > 50 else ""
+        logger.info('Admin bulk created participants quest_id=%s count=%s', quest_id, count)
+        self.send_html(html(f"<main class='card'><h2>Создано: {count}</h2><ul>{links}</ul>{suffix}<a href='/admin'>Назад</a></main>"))
+
+    def export_participants_csv(self):
+        c = db(); cur = c.cursor()
+        rows = cur.execute('SELECT id, quest_id, token, status, current_step, completed, started_at, step_started_at, locked_until FROM participants ORDER BY id').fetchall()
+        lines = ['id,quest_id,token,status,current_step,completed,started_at,step_started_at,locked_until']
+        for r in rows:
+            lines.append(f"{r['id']},{r['quest_id']},{r['token']},{r['status']},{r['current_step']},{r['completed']},{r['started_at'] or ''},{r['step_started_at'] or ''},{r['locked_until'] or ''}")
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/csv; charset=utf-8')
+        self.send_header('Content-Disposition', 'attachment; filename=participants.csv')
+        self.end_headers()
+        self.wfile.write('\n'.join(lines).encode('utf-8'))
+
+    def render_metrics(self, query):
+        period = sanitize_text(parse_qs(query).get('period', ['week'])[0], 16)
+        days = {'day': 1, 'week': 7, 'month': 30}.get(period, 7)
+        since = (now_dt() - timedelta(days=days)).isoformat()
+        c = db(); cur = c.cursor()
+        starts = cur.execute('SELECT COUNT(*) c FROM participants WHERE started_at >= ?', (since,)).fetchone()['c']
+        completed = cur.execute('SELECT COUNT(*) c FROM participants WHERE completed=1 AND started_at >= ?', (since,)).fetchone()['c']
+        avg_sec = cur.execute("SELECT AVG((julianday(a.created_at)-julianday(p.started_at))*86400.0) v FROM participants p JOIN attempts a ON a.participant_id=p.id WHERE p.completed=1 AND a.success=1 AND p.started_at >= ? GROUP BY p.id", (since,)).fetchall()
+        avg_time = int(sum([r['v'] for r in avg_sec if r['v']]) / len(avg_sec)) if avg_sec else 0
+        conv_rows = cur.execute('SELECT step_idx, COUNT(DISTINCT participant_id) c FROM attempts WHERE success=1 AND created_at >= ? GROUP BY step_idx ORDER BY step_idx', (since,)).fetchall()
+        conv = defaultdict(int, {r['step_idx']: r['c'] for r in conv_rows})
+        conv_html = ''.join([f"<tr><td>{idx}</td><td>{cnt}</td><td>{(cnt / starts * 100):.1f}%</td></tr>" for idx, cnt in conv.items()]) or "<tr><td colspan='3'>Нет данных</td></tr>"
+        completion_rate = (completed / starts * 100) if starts else 0.0
+        self.send_html(html(f"<main class='card'><h1>Метрики ({period})</h1><p><a href='/admin'>Назад</a></p><p>Стартов квеста: <b>{starts}</b></p><p>% завершения: <b>{completion_rate:.1f}%</b></p><p>Среднее время прохождения: <b>{avg_time} сек</b></p><h2>Конверсия по этапам</h2><table><tr><th>Этап</th><th>Прошли</th><th>Конверсия от стартов</th></tr>{conv_html}</table><p>Период: <a href='/admin/metrics?period=day'>день</a> · <a href='/admin/metrics?period=week'>неделя</a> · <a href='/admin/metrics?period=month'>месяц</a></p></main>"))
 
     def render_quest_form(self, quest_id=None):
         c = db()
