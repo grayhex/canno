@@ -175,6 +175,20 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.audit('admin', 'admin.login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
             self.render_login('Неверный логин или пароль.')
 
+        def format_seconds(self, total_seconds):
+            secs = max(0, int(total_seconds))
+            minutes, seconds = divmod(secs, 60)
+            return f"{minutes:02d}:{seconds:02d}"
+
+        def player_hint(self, step_idx):
+            hints = {
+                1: 'Подумайте про предмет, который открывает замки.',
+                2: 'Это предмет освещения, который обычно висит на потолке.',
+                3: 'Ищите вещь, с которой вы обычно на связи.',
+                4: 'Это место для хранения документов и ценных бумаг.',
+            }
+            return hints.get(step_idx, 'Внимательно перечитайте загадку и попробуйте другой вариант.')
+
         def logout(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
             if sid:
@@ -192,10 +206,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
                 q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
-                if not q['active']: self.send_html(html("<main class='card'><h2>Квест закрыт админом</h2></main>")); return
+                if not q['active']: self.send_html(html("<main class='card'><h2>Квест временно закрыт</h2><p>Свяжитесь с организатором и попробуйте позже.</p></main>")); return
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
                 progress = int((p['current_step'] - 1) / len(steps) * 100)
-                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(q['title'])}</h1><div class='bar'><span style='width:{progress}%'></span></div><p>Этап {p['current_step']} из {len(steps)}</p><p>{html_lib.escape(step['prompt'])}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' required><button>Проверить</button></form></main>"""))
+                remaining_html = ''
+                if step and step['step_time_limit_sec'] and p['step_started_at']:
+                    started_at = datetime.fromisoformat(p['step_started_at'])
+                    deadline = started_at + timedelta(seconds=step['step_time_limit_sec'])
+                    remaining = (deadline - service.now_dt()).total_seconds()
+                    remaining_html = f"<div class='timer-wrap'><p class='muted'>Осталось времени на этап</p><p id='step-timer' class='timer' data-remaining='{int(remaining)}' data-warning='120'>{self.format_seconds(remaining)}</p><p id='step-warning' class='warning hidden'>Мало времени — попробуйте самый очевидный вариант ответа.</p></div>"
+                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(q['title'])}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(step['prompt'])}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
             finally:
                 c.close()
 
@@ -223,7 +243,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
                 c.commit()
                 self._record_attempt("step", key)
-                self.send_html(html(f"<main class='card'><p>Неверный пароль</p><a href='/play/{token}'>Назад</a></main>"))
+                hint = self.player_hint(p['current_step'])
+                self.send_html(html(f"<main class='card'><h2>Пока не подошло</h2><p>Неверный пароль. Проверьте раскладку клавиатуры и попробуйте ещё раз.</p><p class='hint'>Подсказка: {html_lib.escape(hint)}</p><a href='/play/{token}'>Вернуться к этапу</a></main>"))
             finally:
                 c.close()
 
