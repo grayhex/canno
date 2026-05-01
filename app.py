@@ -309,6 +309,7 @@ class H(BaseHTTPRequestHandler):
         sid = self.parse_cookies().get(SESSION_COOKIE)
         if sid:
             SESSIONS.pop(sid.value, None)
+        logger.info('Admin logout from ip=%s', self.client_ip())
         self.send_response(303)
         self.send_header('Location', '/admin/login')
         self.send_header('Set-Cookie', f'{SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0')
@@ -317,11 +318,14 @@ class H(BaseHTTPRequestHandler):
     def render_play(self, token):
         c = db(); cur = c.cursor()
         p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
-        if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
+        if not p:
+            logger.warning('Invalid participant token requested: token=%s ip=%s', token, self.client_ip())
+            self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
         q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
         steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
         if not q['active']: self.send_html(html("<main class='card'><h2>Квест закрыт админом</h2></main>")); return
         if p['locked_until'] and datetime.fromisoformat(p['locked_until']) > now_dt():
+            logger.info('Participant token=%s is locked until %s', token, p['locked_until'])
             self.send_html(html(f"<main class='card'><h2>До завтра недоступно</h2><p>Возвращайтесь после: {p['locked_until']}</p></main>")); return
         if p['completed']:
             self.send_html(html(f"<main class='card'><h2>Финиш!</h2><p>Приз находится: <b>{html_lib.escape(q['final_location'])}</b></p></main>")); return
@@ -334,10 +338,13 @@ class H(BaseHTTPRequestHandler):
 
     def submit_password(self, token, password):
         c = db(); cur = c.cursor(); p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
-        if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
+        if not p:
+            logger.warning('POST to invalid participant token: token=%s ip=%s', token, self.client_ip())
+            self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
         ip = self.client_ip()
         attempt_key = f'{ip}:{token}'
         if self._blocked(STEP_ATTEMPTS, attempt_key, MAX_STEP_ATTEMPTS, STEP_ATTEMPT_WINDOW_SECONDS):
+            logger.warning('Step attempts rate-limited for token=%s ip=%s', token, ip)
             self.send_html(html("<main class='card'><p>Слишком много попыток. Подождите несколько минут.</p></main>"), 429)
             return
         steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
@@ -346,20 +353,25 @@ class H(BaseHTTPRequestHandler):
         n = now_dt()
         if q['quest_time_limit_sec'] and p['started_at']:
             if n > datetime.fromisoformat(p['started_at']) + timedelta(seconds=q['quest_time_limit_sec']):
+                logger.info('Quest timer expired for participant_id=%s token=%s', p['id'], token)
                 cur.execute('UPDATE participants SET locked_until=? WHERE id=?', (next_day_start_iso(), p['id'])); c.commit(); self.send_html(html("<main class='card'><p>Время квеста вышло. До завтра.</p></main>")); return
         if step['step_time_limit_sec'] and p['step_started_at']:
             if n > datetime.fromisoformat(p['step_started_at']) + timedelta(seconds=step['step_time_limit_sec']):
+                logger.info('Step timer expired for participant_id=%s token=%s step=%s', p['id'], token, p['current_step'])
                 cur.execute('UPDATE participants SET locked_until=? WHERE id=?', (next_day_start_iso(), p['id'])); c.commit(); self.send_html(html("<main class='card'><p>Время этапа вышло. До завтра.</p></main>")); return
         cleaned_password = sanitize_text(password, 128)
         success = int(cleaned_password == step['password'])
         cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned_password, success, now()))
         if success:
+            logger.info('Step solved for participant_id=%s token=%s step=%s', p['id'], token, p['current_step'])
             STEP_ATTEMPTS.pop(attempt_key, None)
             if p['current_step'] >= len(steps):
                 cur.execute('UPDATE participants SET completed=1 WHERE id=?', (p['id'],))
+                logger.info('Quest completed for participant_id=%s token=%s', p['id'], token)
             else:
                 cur.execute('UPDATE participants SET current_step=current_step+1, step_started_at=? WHERE id=?', (now(), p['id']))
             c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
+        logger.warning('Wrong step password for participant_id=%s token=%s step=%s', p['id'], token, p['current_step'])
         self._record_attempt(STEP_ATTEMPTS, attempt_key, STEP_ATTEMPT_WINDOW_SECONDS)
         c.commit(); self.send_html(html(f"<main class='card'><p>Неверный пароль</p><a href='/play/{token}'>Назад</a></main>"))
 
