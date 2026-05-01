@@ -124,6 +124,23 @@ class CannoTestCase(unittest.TestCase):
         finally:
             srv.shutdown(); th.join(timeout=2); srv.server_close()
 
+    def test_admin_audit_page_and_csv_export(self):
+        payload = 'username=admin&password=test-admin-password'
+        status, headers, _ = self.request(
+            'POST', '/admin/login', body=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        self.assertEqual(status, 303)
+        cookie = headers['Set-Cookie'].split(';', 1)[0]
+
+        status, _, body = self.request('GET', '/admin/audit', headers={'Cookie': cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('Аудит', body)
+        self.assertIn('admin.login.success', body)
+
+        status, _, body = self.request('GET', '/admin/audit/export.csv', headers={'Cookie': cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('created_at,actor,action,target,metadata,ip', body)
+
 
 if __name__ == '__main__':
     unittest.main()

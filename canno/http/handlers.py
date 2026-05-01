@@ -2,6 +2,8 @@ import html as html_lib
 import json
 import logging
 import secrets
+import csv
+import io
 from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
@@ -32,8 +34,33 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
 
+        def send_csv(self, filename, content):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+            self.end_headers()
+            self.wfile.write(content.encode('utf-8'))
+
         def client_ip(self):
             return self.client_address[0]
+
+        def audit(self, actor, action, target='', metadata=None, ip=None):
+            c = repo.connect()
+            try:
+                c.execute(
+                    'INSERT INTO audit_events(created_at, actor, action, target, metadata, ip) VALUES (?,?,?,?,?,?)',
+                    (
+                        service.now(),
+                        actor,
+                        action,
+                        service.sanitize_text(target, 512),
+                        json.dumps(metadata or {}, ensure_ascii=False),
+                        ip or self.client_ip(),
+                    ),
+                )
+                c.commit()
+            finally:
+                c.close()
 
         def parse_cookies(self):
             cookie = SimpleCookie()
@@ -94,6 +121,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if p.path == '/admin/metrics':
                     if not self.require_admin(): return
                     self.render_metrics(p.query); return
+                if p.path == '/admin/audit':
+                    if not self.require_admin(): return
+                    self.render_audit(p.query); return
+                if p.path == '/admin/audit/export.csv':
+                    if not self.require_admin(): return
+                    self.export_audit_csv(p.query); return
                 if p.path == '/admin/quest/new':
                     if not self.require_admin(): return
                     self.render_quest_form(); return
@@ -132,17 +165,21 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if username == config.ADMIN_USER and service.verify_password(password, admin_password_hash_value):
                 sid = secrets.token_urlsafe(32)
                 auth_store.set(sid, service.now_dt() + timedelta(hours=8))
+                self.audit('admin', 'admin.login.success', target=username, metadata={'session_id': sid}, ip=ip)
                 self.send_response(303)
                 self.send_header('Location', '/admin')
                 self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; SameSite=Lax')
                 self.end_headers()
                 return
             self._record_attempt("login", ip)
+            self.audit('admin', 'admin.login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
             self.render_login('Неверный логин или пароль.')
 
         def logout(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
-            if sid: auth_store.delete(sid.value)
+            if sid:
+                auth_store.delete(sid.value)
+                self.audit('admin', 'admin.logout', metadata={'session_id': sid.value})
             self.send_response(303)
             self.send_header('Location', '/admin/login')
             self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0')
@@ -169,6 +206,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
                 ip = self.client_ip(); key = f'{ip}:{token}'
                 if self._blocked("step", key, config.MAX_STEP_ATTEMPTS, config.STEP_ATTEMPT_WINDOW_SECONDS):
+                    self.audit('player', 'participant.blocked', target=f'participant:{p["id"]}', metadata={'participant_id': p['id'], 'token': token})
                     self.send_html(html("<main class='card'><p>Слишком много попыток. Подождите несколько минут.</p></main>"), 429); return
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
@@ -179,6 +217,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     auth_store.clear_attempts("step", key)
                     if p['current_step'] >= len(steps):
                         cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
+                        self.audit('player', 'participant.completion', target=f'participant:{p["id"]}', metadata={'participant_id': p['id'], 'token': token, 'quest_id': p['quest_id']})
                     else:
                         cur.execute("UPDATE participants SET current_step=current_step+1, step_started_at=?, status='in_progress' WHERE id=?", (service.now(), p['id']))
                     c.commit(); self.send_response(303); self.send_header('Location', f'/play/{token}'); self.end_headers(); return
@@ -189,7 +228,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>Админка</h1></main>"))
+            self.send_html(html("<main class='card'><h1>Админка</h1><p><a href='/admin/audit'>Журнал аудита</a></p></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -198,6 +237,61 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.send_html(html("<main class='card'><h1>Метрики</h1></main>"))
 
         def render_quest_form(self, quest_id=None):
+            self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             self.send_html(html("<main class='card'><h1>Квест</h1></main>"))
+
+        def render_audit(self, query):
+            params = parse_qs(query)
+            action = service.sanitize_text(params.get('action', [''])[0], 128)
+            quest_id = service.parse_int(params.get('quest_id', [''])[0], minimum=1)
+            date_from = service.sanitize_text(params.get('from', [''])[0], 64)
+            date_to = service.sanitize_text(params.get('to', [''])[0], 64)
+            sql = 'SELECT * FROM audit_events WHERE 1=1'
+            vals = []
+            if action:
+                sql += ' AND action=?'
+                vals.append(action)
+            if quest_id:
+                sql += " AND metadata LIKE ?"
+                vals.append(f'%\"quest_id\": {quest_id}%')
+            if date_from:
+                sql += ' AND created_at>=?'
+                vals.append(date_from)
+            if date_to:
+                sql += ' AND created_at<=?'
+                vals.append(date_to)
+            sql += ' ORDER BY id DESC LIMIT 300'
+            c = repo.connect()
+            rows = c.execute(sql, tuple(vals)).fetchall()
+            c.close()
+            items = ''.join(
+                f"<tr><td>{html_lib.escape(r['created_at'])}</td><td>{html_lib.escape(r['actor'])}</td><td>{html_lib.escape(r['action'])}</td><td>{html_lib.escape(r['target'] or '')}</td><td><pre>{html_lib.escape(r['metadata'] or '')}</pre></td><td>{html_lib.escape(r['ip'] or '')}</td></tr>"
+                for r in rows
+            )
+            export_link = f"/admin/audit/export.csv?action={action}&quest_id={quest_id or ''}&from={date_from}&to={date_to}"
+            self.send_html(html(f"<main class='card'><h1>Аудит</h1><form><input name='from' placeholder='from ISO' value='{html_lib.escape(date_from)}'><input name='to' placeholder='to ISO' value='{html_lib.escape(date_to)}'><input name='action' placeholder='action' value='{html_lib.escape(action)}'><input name='quest_id' placeholder='quest_id' value='{quest_id or ''}'><button>Фильтр</button></form><p><a href='{html_lib.escape(export_link)}'>Экспорт CSV</a></p><table><tr><th>Время</th><th>Actor</th><th>Action</th><th>Target</th><th>Metadata</th><th>IP</th></tr>{items}</table></main>"))
+
+        def export_audit_csv(self, query):
+            params = parse_qs(query)
+            action = service.sanitize_text(params.get('action', [''])[0], 128)
+            quest_id = service.parse_int(params.get('quest_id', [''])[0], minimum=1)
+            sql = 'SELECT created_at, actor, action, target, metadata, ip FROM audit_events WHERE 1=1'
+            vals = []
+            if action:
+                sql += ' AND action=?'
+                vals.append(action)
+            if quest_id:
+                sql += " AND metadata LIKE ?"
+                vals.append(f'%\"quest_id\": {quest_id}%')
+            sql += ' ORDER BY id DESC LIMIT 10000'
+            c = repo.connect()
+            rows = c.execute(sql, tuple(vals)).fetchall()
+            c.close()
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['created_at', 'actor', 'action', 'target', 'metadata', 'ip'])
+            for row in rows:
+                writer.writerow([row['created_at'], row['actor'], row['action'], row['target'], row['metadata'], row['ip']])
+            self.send_csv('audit_events.csv', output.getvalue())
 
     return H
