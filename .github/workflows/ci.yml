@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '17 3 * * *'
 
 jobs:
   test:
@@ -50,3 +52,47 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build container image
         run: docker build -t canno:ci .
+
+  backup-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Create sample DB and backup
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from canno.repositories.db import QuestRepository, create_repository
+
+          repo = QuestRepository(create_repository("sqlite:///ci_backup_test.db"))
+          repo.apply_migrations(datetime.now(timezone.utc).isoformat())
+          PY
+          python backup_db.py --db ci_backup_test.db --out-dir backups
+      - name: Validate backup integrity and schema baseline
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          required = {"schema_migrations", "quests", "steps", "participants", "attempts"}
+          backups = sorted(Path("backups").glob("ci_backup_test_*.db"))
+          if not backups:
+              raise SystemExit("No backup file produced")
+
+          backup = backups[-1]
+          conn = sqlite3.connect(backup)
+          cur = conn.cursor()
+          cur.execute("PRAGMA integrity_check;")
+          status = cur.fetchone()[0]
+          if status != "ok":
+              raise SystemExit(f"Integrity check failed: {status}")
+          cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+          tables = {row[0] for row in cur.fetchall()}
+          missing = sorted(required - tables)
+          if missing:
+              raise SystemExit(f"Missing required tables: {', '.join(missing)}")
+          conn.close()
+          print(f"Validated backup: {backup}")
+          PY
