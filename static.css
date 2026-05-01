@@ -1,7 +1,10 @@
-body{font-family:Inter,system-ui,sans-serif;background:#0b1020;color:#e8ebff;margin:0;padding:16px}
-.card{max-width:420px;margin:20px auto;background:#151c33;border:1px solid #2a355f;border-radius:14px;padding:18px}
-input,button,select{width:100%;padding:12px;border-radius:10px;border:1px solid #34406f;margin:8px 0;background:#0f1730;color:#fff}
+body{font-family:Inter,system-ui,sans-serif;background:#0b1020;color:#e8ebff;margin:0;padding:16px;line-height:1.5}
+.card{max-width:520px;margin:12px auto;background:#151c33;border:1px solid #2a355f;border-radius:14px;padding:20px}
+input,button,select{width:100%;padding:14px;border-radius:12px;border:1px solid #34406f;margin:10px 0;background:#0f1730;color:#fff;font-size:16px}
 button{background:#4f7cff;border:none;font-weight:600}
 .bar{height:10px;background:#0f1730;border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:#5de2a5}
+.timer-wrap{margin:8px 0 14px}.timer{font-size:28px;font-weight:700;margin:0}.timer-danger{color:#ffb3b3}.warning{color:#ffd36b;font-weight:600}.hidden{display:none}
+.muted{opacity:.8;margin:8px 0}.prompt{font-size:18px}.hint{background:#0f1730;padding:10px;border-radius:10px}
 table{width:100%;font-size:12px}td,th{padding:4px}
 a{color:#9ec1ff}
+@media (max-width: 480px){body{padding:10px}.card{padding:16px;border-radius:12px}button,input{min-height:48px}.prompt{font-size:17px}}
