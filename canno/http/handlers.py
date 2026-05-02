@@ -101,6 +101,14 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.end_headers()
             return False
 
+        def is_english_enabled(self):
+            c = repo.connect()
+            try:
+                row = c.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone()
+                return bool(row and row['value'] == '1')
+            finally:
+                c.close()
+
         def do_GET(self):
             try:
                 p = urlparse(self.path)
@@ -248,6 +256,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if not q['active']: self.send_html(html("<main class='card'><h2>Квест временно закрыт</h2><p>Свяжитесь с организатором и попробуйте позже.</p></main>")); return
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
                 locale = service.sanitize_text(parse_qs(urlparse(self.path).query).get('lang', ['ru'])[0], 8)
+                english_enabled = self.is_english_enabled()
+                if not english_enabled:
+                    locale = 'ru'
                 prompt = step['prompt_en'] if locale == 'en' and step['prompt_en'] else step['prompt']
                 progress = int((p['current_step'] - 1) / len(steps) * 100)
                 remaining_html = ''
@@ -304,8 +315,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
-            c = repo.connect(); row = c.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone(); c.close()
-            checked = 'checked' if row and row['value'] == '1' else ''
+            checked = 'checked' if self.is_english_enabled() else ''
             self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Настройки интерфейса</h2><form method='post' action='/admin/settings/save' class='admin-form'><label><input type='checkbox' name='enable_english_content' {checked}> Включить английские поля в редакторе</label><button>Сохранить настройки</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
@@ -318,8 +328,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             c = repo.connect(); cur = c.cursor()
             quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests ORDER BY id DESC').fetchall()
-            settings_row = cur.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone()
-            show_english = settings_row and settings_row['value'] == '1'
+            show_english = self.is_english_enabled()
             selected = None
             steps = []
             if quest_id:
@@ -389,7 +398,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def save_quest_settings(self, data):
             quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)
             title = service.sanitize_text(data.get('title', [''])[0], 256)
-            title_en = service.sanitize_text(data.get('title_en', [''])[0], 256)
+            title_en = service.sanitize_text(data.get('title_en', [''])[0], 256) if self.is_english_enabled() else ''
             final_location = service.sanitize_text(data.get('final_location', [''])[0], 512)
             quest_time_limit_sec = service.parse_int(data.get('quest_time_limit_sec', [''])[0], minimum=0)
             active = 1 if data.get('active', [''])[-1] in ('on', '1', 'true') else 0
