@@ -51,6 +51,7 @@ class SqliteAuthStore(SessionStore, AttemptLimiterStore):
             '''
 CREATE TABLE IF NOT EXISTS admin_sessions (
   session_id TEXT PRIMARY KEY,
+  role TEXT NOT NULL DEFAULT 'admin',
   expires_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS auth_attempts (
@@ -62,6 +63,10 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
 CREATE INDEX IF NOT EXISTS idx_auth_attempts_bucket_key_time ON auth_attempts(bucket, key, attempted_at);
 '''
         )
+        try:
+            cur.execute("ALTER TABLE admin_sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
+        except Exception:
+            pass
         c.commit()
         c.close()
 
@@ -74,14 +79,14 @@ CREATE INDEX IF NOT EXISTS idx_auth_attempts_bucket_key_time ON auth_attempts(bu
 
     def get(self, session_id: str):
         c = self.repo.connect()
-        row = c.execute('SELECT expires_at FROM admin_sessions WHERE session_id=?', (session_id,)).fetchone()
+        row = c.execute('SELECT role, expires_at FROM admin_sessions WHERE session_id=?', (session_id,)).fetchone()
         c.close()
-        return datetime.fromisoformat(row['expires_at']) if row else None
+        return {'role': row['role'], 'expires_at': datetime.fromisoformat(row['expires_at'])} if row else None
 
-    def set(self, session_id: str, expires_at: datetime):
+    def set(self, session_id: str, expires_at: datetime, role: str = 'admin'):
         self._maybe_cleanup(expires_at)
         c = self.repo.connect()
-        c.execute('INSERT INTO admin_sessions(session_id, expires_at) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET expires_at=excluded.expires_at', (session_id, expires_at.isoformat()))
+        c.execute('INSERT INTO admin_sessions(session_id, role, expires_at) VALUES(?,?,?) ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, expires_at=excluded.expires_at', (session_id, role, expires_at.isoformat()))
         c.commit(); c.close()
 
     def delete(self, session_id: str):

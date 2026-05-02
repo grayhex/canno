@@ -67,16 +67,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             cookie.load(self.headers.get('Cookie', ''))
             return cookie
 
-        def is_admin_authenticated(self):
+        def get_user_role(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
             if not sid:
-                return False
+                return None
             sid = sid.value
-            expires_at = auth_store.get(sid)
-            if not expires_at or expires_at < service.now_dt():
+            session = auth_store.get(sid)
+            if not session or session['expires_at'] < service.now_dt():
                 auth_store.delete(sid)
-                return False
-            return True
+                return None
+            return session['role']
 
         def _blocked(self, bucket, key, max_attempts, window_seconds):
             cutoff = service.now_dt() - timedelta(seconds=window_seconds)
@@ -86,10 +86,18 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             auth_store.add_attempt(bucket, key, service.now_dt())
 
         def require_admin(self):
-            if self.is_admin_authenticated():
+            if self.get_user_role() == 'admin':
                 return True
             self.send_response(303)
             self.send_header('Location', '/admin/login')
+            self.end_headers()
+            return False
+
+        def require_editor(self):
+            if self.get_user_role() in ('admin', 'editor'):
+                return True
+            self.send_response(303)
+            self.send_header('Location', '/editor/login')
             self.end_headers()
             return False
 
@@ -110,6 +118,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.render_play(token); return
                 if p.path == '/admin/login':
                     self.render_login(); return
+                if p.path == '/editor/login':
+                    self.render_login('editor'); return
                 if p.path == '/admin/logout':
                     self.logout(); return
                 if p.path == '/admin':
@@ -128,10 +138,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     if not self.require_admin(): return
                     self.export_audit_csv(p.query); return
                 if p.path == '/admin/quest/new':
-                    if not self.require_admin(): return
+                    if not self.require_editor(): return
                     self.render_quest_form(); return
                 if p.path == '/admin/quest/edit':
-                    if not self.require_admin(): return
+                    if not self.require_editor(): return
                     quest_id = service.parse_int(parse_qs(p.query).get('id', [''])[0], minimum=1)
                     if not quest_id:
                         self.send_html(error_page(400, 'Некорректные данные', 'id квеста обязателен'), 400); return
@@ -139,6 +149,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if p.path == '/admin/quests/export.json':
                     if not self.require_admin(): return
                     self.export_quests_json(); return
+                if p.path == '/admin/settings':
+                    if not self.require_admin(): return
+                    self.render_admin_settings(); return
                 if p.path == '/admin/runs/archive':
                     if not self.require_admin(): return
                     self.archive_completed_runs(); return
@@ -153,42 +166,50 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             raw_body = self.rfile.read(length).decode(errors='ignore')
             data = parse_qs(raw_body)
             if p.path == '/admin/login':
-                return self.handle_login(data)
+                return self.handle_login(data, 'admin')
+            if p.path == '/editor/login':
+                return self.handle_login(data, 'editor')
             if p.path == '/admin/quests/import':
                 if not self.require_admin(): return
                 return self.import_quest_json(data)
             if p.path == '/admin/quest/save':
-                if not self.require_admin(): return
+                if not self.require_editor(): return
                 return self.save_quest_settings(data)
             if p.path == '/admin/quest/toggle':
-                if not self.require_admin(): return
+                if not self.require_editor(): return
                 return self.toggle_quest(data)
+            if p.path == '/admin/step/save':
+                if not self.require_editor(): return
+                return self.save_quest_step(data)
             if p.path.startswith('/play/'):
                 return self.submit_password(service.sanitize_text(p.path.split('/play/')[1], 128), data.get('password', [''])[0])
             self.send_json({'error': 'not found'}, 404)
 
-        def render_login(self, error=''):
+        def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
-            self.send_html(html(f"<main class='card'><h1>🔐 Вход в админку</h1><p class='muted'>Управление квестами, импорт/экспорт и аудит.</p>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form></main>"))
+            title = 'админку' if role == 'admin' else 'панель редактора'
+            self.send_html(html(f"<main class='card'><h1>🔐 Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form></main>"))
 
-        def handle_login(self, data):
+        def handle_login(self, data, role='admin'):
             ip = self.client_ip()
             if self._blocked("login", ip, config.MAX_LOGIN_ATTEMPTS, config.LOGIN_WINDOW_SECONDS):
-                self.render_login('Слишком много попыток. Повторите позже.'); return
+                self.render_login(role, 'Слишком много попыток. Повторите позже.'); return
             username = service.sanitize_text(data.get('username', [''])[0], 64)
             password = service.sanitize_text(data.get('password', [''])[0], 256)
-            if username == config.ADMIN_USER and service.verify_password(password, admin_password_hash_value):
+            expected_user = config.ADMIN_USER if role == 'admin' else config.EDITOR_USER
+            expected_hash = admin_password_hash_value if role == 'admin' else service.resolve_password_hash(config.EDITOR_PASSWORD_HASH, config.EDITOR_PASSWORD)
+            if username == expected_user and service.verify_password(password, expected_hash):
                 sid = secrets.token_urlsafe(32)
-                auth_store.set(sid, service.now_dt() + timedelta(hours=8))
-                self.audit('admin', 'admin.login.success', target=username, metadata={'session_id': sid}, ip=ip)
+                auth_store.set(sid, service.now_dt() + timedelta(hours=8), role=role)
+                self.audit(role, f'{role}.login.success', target=username, metadata={'session_id': sid}, ip=ip)
                 self.send_response(303)
-                self.send_header('Location', '/admin')
+                self.send_header('Location', '/admin' if role == 'admin' else '/admin/quest/new')
                 self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; SameSite=Lax')
                 self.end_headers()
                 return
             self._record_attempt("login", ip)
-            self.audit('admin', 'admin.login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
-            self.render_login('Неверный логин или пароль.')
+            self.audit(role, f'{role}.login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
+            self.render_login(role, 'Неверный логин или пароль.')
 
         def format_seconds(self, total_seconds):
             secs = max(0, int(total_seconds))
@@ -277,7 +298,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><p class='muted'>Управляйте квестами, настройками и сервисными операциями в одном меню.</p><div class='nav-links'><a href='/admin/quest/new'>Квесты и настройки</a><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/admin/logout'>Выйти</a></div></main>"))
+
+        def render_admin_settings(self):
+            self.send_html(html("<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{\"quests\": [ ... ]}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -290,8 +314,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             c = repo.connect(); cur = c.cursor()
             quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests ORDER BY id DESC').fetchall()
             selected = None
+            steps = []
             if quest_id:
                 selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests WHERE id=?', (quest_id,)).fetchone()
+                steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
             c.close()
 
             def esc(value):
@@ -309,7 +335,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 toggle_label = 'Отключить' if q['active'] else 'Включить'
                 status = '✅' if q['active'] else '⏸️'
                 row_items.append(
-                    f"<tr><td>{q['id']}</td><td>{esc(q['title'])}</td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
+                    f"<tr><td>{q['id']}</td><td>{esc(q['title'])}<br><small class='muted'>share: /play/{q['id']}</small></td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
                     f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть</a>"
                     f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
                 )
@@ -319,8 +345,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             page = f"""
 <main class='card admin-card'>
   <h1>🧩 Квесты и настройки</h1>
-  <p class='muted'>Создавайте, редактируйте и включайте/выключайте квесты без ручного JSON.</p>
-  <div class='nav-links nav-inline'><a href='/admin'>← Назад в админку</a><a href='/admin/quests/export.json'>Экспорт JSON</a></div>
+  <p class='muted'>Только интерфейс работы с квестами: создание, редактирование, этапы и пароли.</p>
+  <div class='nav-links nav-inline'><a href='/admin'>← Назад</a></div>
   <h2>{heading}</h2>
   <form method='post' action='/admin/quest/save' class='admin-form'>
     <input type='hidden' name='id' value='{selected_id}'>
@@ -333,8 +359,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
   </form>
   <h2>Список квестов</h2>
   <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div>
-  <h2>Импорт JSON</h2>
-  <form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{"quests": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form>
+  <h2>Этапы квеста</h2>
+  {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек' value='{st['step_time_limit_sec'] or ''}'><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
+  <form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек'><button>Добавить этап</button></form>
 </main>
 """
             self.send_html(html(page))
@@ -373,6 +400,24 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             c.commit(); c.close()
             self.audit('admin', 'admin.quest.toggled', target=f'quest:{quest_id}', metadata={'quest_id': quest_id, 'active': new_active})
             self.send_response(303); self.send_header('Location', '/admin/quest/new'); self.end_headers()
+
+        def save_quest_step(self, data):
+            quest_id = service.parse_int(data.get('quest_id', [''])[0], minimum=1)
+            step_id = service.parse_int(data.get('step_id', [''])[0], minimum=1)
+            idx = service.parse_int(data.get('idx', [''])[0], minimum=1)
+            prompt = service.sanitize_text(data.get('prompt', [''])[0], 2000)
+            password = service.sanitize_text(data.get('password', [''])[0], 128)
+            step_time_limit_sec = service.parse_int(data.get('step_time_limit_sec', [''])[0], minimum=0)
+            if not quest_id or not idx or not prompt or not password:
+                self.send_html(error_page(400, 'Некорректные данные', 'Заполните обязательные поля этапа'), 400); return
+            c = repo.connect(); cur = c.cursor()
+            if step_id:
+                cur.execute('UPDATE steps SET idx=?, prompt=?, password=?, step_time_limit_sec=? WHERE id=? AND quest_id=?', (idx, prompt, password, step_time_limit_sec, step_id, quest_id))
+            else:
+                cur.execute('INSERT INTO steps(quest_id,idx,prompt,password,step_time_limit_sec) VALUES (?,?,?,?,?)', (quest_id, idx, prompt, password, step_time_limit_sec))
+            c.commit(); c.close()
+            self.audit('editor', 'editor.step.saved', target=f'quest:{quest_id}', metadata={'quest_id': quest_id, 'step_id': step_id, 'idx': idx})
+            self.send_response(303); self.send_header('Location', f'/admin/quest/edit?id={quest_id}'); self.end_headers()
 
         def import_quest_json(self, data):
             payload = data.get('payload', ['{}'])[0]
