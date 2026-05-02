@@ -305,15 +305,22 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             logo_html = "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>" if show_logo else "<div class='home-logo home-logo-hidden' aria-hidden='true'></div>"
             self.send_html(html(
                 "<main class='card home-card'>"
+                "<section class='home-hero v-section'>"
                 f"{logo_html}"
+                "<div class='home-copy'>"
                 f"<h1>{title}</h1>"
                 f"<div class='home-intro'><p>{intro}</p></div>"
+                "</div>"
+                "<div class='home-actions'>"
                 "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
                 "<div class='quest-enter-row'>"
                 "<input id='quest-token' name='token' placeholder='Номер квеста' maxlength='128' required>"
-                "<button class='quest-enter-btn btn'>Войти</button>"
+                "<button class='quest-enter-btn btn'>Войти в квест</button>"
                 "</div>"
                 "</form>"
+                "<a class='btn btn-ghost home-secondary' href='/admin/login'>Организатор? Войти в админку</a>"
+                "</div>"
+                "</section>"
                 "</main>"
             ))
 
