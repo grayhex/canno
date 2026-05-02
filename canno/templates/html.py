@@ -19,7 +19,7 @@ def html(body):
         "const backBtn=document.getElementById('nav-back');const homeBtn=document.getElementById('nav-home');"
         "if(isHome){backBtn.disabled=true;homeBtn.classList.add('disabled');homeBtn.setAttribute('aria-disabled','true');homeBtn.addEventListener('click',(e)=>e.preventDefault());}"
         "backBtn.addEventListener('click',()=>{if(!isHome&&window.history.length>1){window.history.back();}});"
-        "const cards=document.querySelectorAll('.card');"
+        "const menuToggle=document.getElementById('nav-menu-toggle');const menuPanel=document.getElementById('nav-mobile-panel');if(menuToggle&&menuPanel){menuToggle.addEventListener('click',()=>{const expanded=menuToggle.getAttribute('aria-expanded')==='true';menuToggle.setAttribute('aria-expanded',String(!expanded));menuPanel.setAttribute('aria-hidden',String(expanded));menuPanel.classList.toggle('open',!expanded);menuToggle.textContent=!expanded?'✕ Закрыть':'☰ Меню';});}const cards=document.querySelectorAll('.card');"
         "cards.forEach((card)=>{card.addEventListener('mousemove',(e)=>{const r=card.getBoundingClientRect();card.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');card.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');});});"
         "const hero=document.querySelector('.home-card');if(hero&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){window.addEventListener('scroll',()=>{const y=Math.min(window.scrollY,500);hero.style.opacity=String(1-y/500);hero.style.transform='translateY('+(y*0.2)+'px) scale('+(1-y/10000)+')';},{passive:true});}"
         "})();</script></body></html>"
