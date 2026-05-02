@@ -175,6 +175,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if p.path == '/admin/quest/save':
                 if not self.require_editor(): return
                 return self.save_quest_settings(data)
+            if p.path == '/admin/settings/save':
+                if not self.require_admin(): return
+                return self.save_admin_settings(data)
             if p.path == '/admin/quest/toggle':
                 if not self.require_editor(): return
                 return self.toggle_quest(data)
@@ -301,7 +304,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
-            self.send_html(html("<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{\"quests\": [ ... ]}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            c = repo.connect(); row = c.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone(); c.close()
+            checked = 'checked' if row and row['value'] == '1' else ''
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Настройки интерфейса</h2><form method='post' action='/admin/settings/save' class='admin-form'><label><input type='checkbox' name='enable_english_content' {checked}> Включить английские поля в редакторе</label><button>Сохранить настройки</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -313,6 +318,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             c = repo.connect(); cur = c.cursor()
             quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests ORDER BY id DESC').fetchall()
+            settings_row = cur.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone()
+            show_english = settings_row and settings_row['value'] == '1'
             selected = None
             steps = []
             if quest_id:
@@ -350,21 +357,34 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
   <h2>{heading}</h2>
   <form method='post' action='/admin/quest/save' class='admin-form'>
     <input type='hidden' name='id' value='{selected_id}'>
-    <input name='title' placeholder='Название (RU)' maxlength='256' required value='{title}'>
-    <input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>
+    <div class='tabs'><button type='button' class='tab-btn active' data-tab='tab-quest'>Квест</button><button type='button' class='tab-btn' data-tab='tab-steps'>Этапы</button><button type='button' class='tab-btn' data-tab='tab-list'>Список</button></div>
+    <section id='tab-quest' class='tab-pane active'>
+    <input name='title' placeholder='Название' maxlength='256' required value='{title}'>
+    {'<input name=\'title_en\' placeholder=\'Название (EN)\' maxlength=\'256\' value=\''+title_en+'\'>' if show_english else ''}
     <input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'>
     <input name='quest_time_limit_sec' type='number' min='0' placeholder='Ограничение времени (сек)' value='{time_limit}'>
     <label><input type='checkbox' name='active' {checked}> Активен</label>
     <button>Сохранить квест</button>
+    </section>
   </form>
-  <h2>Список квестов</h2>
-  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div>
-  <h2>Этапы квеста</h2>
+  <section id='tab-list' class='tab-pane'><h2>Список квестов</h2>
+  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div></section>
+  <section id='tab-steps' class='tab-pane'><h2>Этапы квеста</h2>
   {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек' value='{st['step_time_limit_sec'] or ''}'><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
-  <form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек'><button>Добавить этап</button></form>
-</main>
+  <form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек'><button>Добавить этап</button></form>
+</section></main>
+<script>document.querySelectorAll('.tab-btn').forEach((btn)=>{{btn.addEventListener('click',()=>{{document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-pane').forEach((p)=>p.classList.remove('active'));btn.classList.add('active');document.getElementById(btn.dataset.tab).classList.add('active');}});}});</script>
 """
             self.send_html(html(page))
+
+
+        def save_admin_settings(self, data):
+            enable_english = '1' if data.get('enable_english_content', [''])[-1] in ('on', '1', 'true') else '0'
+            c = repo.connect()
+            c.execute("INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('enable_english_content', enable_english))
+            c.commit(); c.close()
+            self.audit('admin', 'admin.settings.updated', metadata={'enable_english_content': enable_english})
+            self.send_response(303); self.send_header('Location', '/admin/settings'); self.end_headers()
 
         def save_quest_settings(self, data):
             quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)
