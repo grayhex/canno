@@ -224,7 +224,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
             title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>🔐 Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form><div class='nav-links nav-inline'><a href='/'>← Назад в главное меню</a></div></main>"))
+            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form><div class='nav-links nav-inline'><a href='/'>← Назад в главное меню</a></div></main>"))
 
         def handle_login(self, data, role='admin'):
             ip = self.client_ip()
