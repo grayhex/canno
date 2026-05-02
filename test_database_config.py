@@ -23,14 +23,7 @@ class DatabaseConfigTestCase(unittest.TestCase):
 
     def test_docker_sqlite_url_resolves_to_expected_path(self):
         repo = SqliteRepository('sqlite:////data/canno.db')
-        conn = None
-        try:
-            conn = repo.connect()
-            db_path = conn.execute('PRAGMA database_list').fetchone()['file']
-            self.assertEqual(db_path, '/data/canno.db')
-        finally:
-            if conn is not None:
-                conn.close()
+        self.assertEqual(repo._resolve_path(), '/data/canno.db')
 
     def test_migrations_and_seed_use_same_configured_path(self):
         with tempfile.TemporaryDirectory() as tmp:

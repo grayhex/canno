@@ -19,7 +19,7 @@ class SqliteRepository(BaseRepository):
     def __init__(self, database_url: str):
         self.database_url = database_url
 
-    def connect(self):
+    def _resolve_path(self) -> str:
         parsed = urlparse(self.database_url)
         if parsed.scheme == 'sqlite':
             path = unquote(f'{parsed.netloc}{parsed.path}')
@@ -29,6 +29,10 @@ class SqliteRepository(BaseRepository):
                 path = ':memory:'
         else:
             path = self.database_url
+        return path
+
+    def connect(self):
+        path = self._resolve_path()
         if path != ':memory:':
             parent = Path(path).expanduser().absolute().parent
             parent.mkdir(parents=True, exist_ok=True)
