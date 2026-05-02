@@ -4,6 +4,7 @@ import logging
 import secrets
 import csv
 import io
+import mimetypes
 from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
@@ -143,8 +144,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                         self.send_html(error_page(400, 'Некорректные данные', 'Путь к логотипу должен быть внутри проекта.'), 400); return
                     if not logo.exists():
                         self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
+                    content_type, _ = mimetypes.guess_type(str(logo))
                     self.send_response(200)
-                    self.send_header('Content-Type', 'image/png')
+                    self.send_header('Content-Type', content_type or 'application/octet-stream')
                     self.end_headers()
                     self.wfile.write(logo.read_bytes())
                     return
@@ -357,12 +359,13 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 f"<div class='home-intro'><h2>Инструкция для игрока</h2><p>{guide}</p></div>"
                 "</div>"
                 "<div class='home-actions'>"
-                "<form class='quest-enter-form' aria-label='Вход в квест по номеру' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
+                "<form class='quest-enter-form' aria-label='Вход в квест по коду' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
                 "<div class='quest-enter-row'>"
-                "<label class='sr-only' for='quest-token'>Номер квеста</label><input id='quest-token' name='token' placeholder='Номер квеста' maxlength='128' required>"
+                "<label class='sr-only' for='quest-token'>Код квеста</label><input id='quest-token' name='token' placeholder='Код квеста' maxlength='128' required>"
                 "<button class='quest-enter-btn btn'>Войти в квест</button>"
                 "</div>"
                 "</form>"
+                f"<div class='player-guide-ticker' role='note' aria-label='Подсказка игрока'><p class='player-guide-track'><span>{guide}</span><span aria-hidden='true'>{guide}</span></p></div>"
                 "</div>"
                 "</section>"
                 "</main>"
