@@ -265,6 +265,24 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             unit = service.sanitize_text(unit_raw or 'minutes', 16)
             return amount * (3600 if unit == 'hours' else 60)
 
+        def format_limit_label(self, total_seconds):
+            secs = service.parse_int(total_seconds, minimum=0) or 0
+            if secs == 0:
+                return '—'
+            if secs % 3600 == 0:
+                return f'{secs // 3600} ч'
+            if secs % 60 == 0:
+                return f'{secs // 60} мин'
+            return f'{secs / 60:.1f} мин'
+
+        def generate_quest_code(self, cur):
+            alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+            for _ in range(20):
+                code = ''.join(secrets.choice(alphabet) for _ in range(4))
+                if not cur.execute('SELECT id FROM quests WHERE access_code=?', (code,)).fetchone():
+                    return code
+            raise RuntimeError('Не удалось сгенерировать уникальный код квеста')
+
         def logout(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
             if sid:
@@ -344,17 +362,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             c = repo.connect(); cur = c.cursor()
             try:
                 p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
-                if not p and token.isdigit():
-                    quest_id = service.parse_int(token, minimum=1)
-                    if quest_id:
-                        quest = cur.execute('SELECT id, active FROM quests WHERE id=?', (quest_id,)).fetchone()
-                        if quest:
-                            cur.execute(
-                                "INSERT INTO participants(quest_id, token, started_at, step_started_at, status) VALUES (?,?,?,?,?)",
-                                (quest_id, token, service.now(), service.now(), 'in_progress'),
-                            )
-                            c.commit()
-                            p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
+                if not p:
+                    quest = cur.execute('SELECT id, access_code FROM quests WHERE access_code=?', (token.upper(),)).fetchone()
+                    if quest:
+                        participant_token = secrets.token_urlsafe(24)
+                        cur.execute(
+                            "INSERT INTO participants(quest_id, token, started_at, step_started_at, status) VALUES (?,?,?,?,?)",
+                            (quest['id'], participant_token, service.now(), service.now(), 'in_progress'),
+                        )
+                        c.commit()
+                        p = cur.execute('SELECT * FROM participants WHERE token=?', (participant_token,)).fetchone()
                 if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
                 q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
@@ -423,7 +440,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card admin-hub-card screen-admin'><h1>⚙️ Админка</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quest/new'>Редактор квестов</a><a class='btn btn-ghost' href='/admin/settings'>Технические настройки</a><a class='btn btn-ghost' href='/play/1'>Запустить квест #1</a><a class='btn btn-ghost' href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card admin-hub-card screen-admin'><h1>⚙️ Админка</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quest/new'>Редактор квестов</a><a class='btn btn-ghost' href='/admin/settings'>Технические настройки</a><a class='btn btn-ghost' href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
@@ -442,12 +459,17 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             c = repo.connect(); cur = c.cursor()
-            quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests ORDER BY id DESC').fetchall()
+            uncoded = cur.execute('SELECT id FROM quests WHERE access_code IS NULL OR access_code=""').fetchall()
+            for qrow in uncoded:
+                cur.execute('UPDATE quests SET access_code=? WHERE id=?', (self.generate_quest_code(cur), qrow['id']))
+            if uncoded:
+                c.commit()
+            quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec, access_code FROM quests ORDER BY id DESC').fetchall()
             show_english = self.is_english_enabled()
             selected = None
             steps = []
             if quest_id:
-                selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests WHERE id=?', (quest_id,)).fetchone()
+                selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec, access_code FROM quests WHERE id=?', (quest_id,)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
             c.close()
 
@@ -464,10 +486,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 status_badge = '<span class="status-badge status-active">Активен</span>' if q['active'] else '<span class="status-badge status-paused">Пауза</span>'
                 row_items.append(
                     f"<tr data-title='{esc(q['title']).lower()}' data-status='{'active' if q['active'] else 'paused'}' data-limit='{q['quest_time_limit_sec'] or 0}' data-id='{q['id']}'>"
-                    f"<td>{q['id']}</td><td><a class='quest-title-link' href='/admin/quest/edit?id={q['id']}'><strong>{esc(q['title'])}</strong></a><button class='icon-action btn btn-ghost inline-copy-link copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать ссылку квеста #{q['id']}' data-path='/play/{q['id']}'><span aria-hidden='true'>🔗</span><span class='sr-only'>Скопировать ссылку квеста #{q['id']}</span></button><br><small class='muted'>{esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{q['quest_time_limit_sec'] or '—'} сек</td>"
+                    f"<td>{q['id']}</td><td><a class='quest-title-link' href='/admin/quest/edit?id={q['id']}'><strong>{esc(q['title'])}</strong></a><button class='icon-action btn btn-ghost inline-copy-link copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать ссылку квеста #{q['id']}' data-path='/play/{esc(q['access_code'])}'><span aria-hidden='true'>🔗</span><span class='sr-only'>Скопировать ссылку квеста #{q['id']}</span></button><br><small class='muted'>Код: {esc(q['access_code'])} · {esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{self.format_limit_label(q['quest_time_limit_sec'])}</td>"
                     f"<td><div class='action-icon-group'>"
-                                        f"<a class='icon-action btn btn-ghost' title='Запустить тест' aria-label='Запустить тест квеста #{q['id']}' href='/play/{q['id']}'><span aria-hidden='true'>▶️</span><span class='sr-only'>Запустить тест квеста #{q['id']}</span></a>"
-                                        f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action btn btn-ghost' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}'><span aria-hidden='true'>{'⏸️' if q['active'] else '✅'}</span><span class='sr-only'>{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}</span></button></form>"
+                                        f"<a class='icon-action btn btn-ghost' title='Запустить тест' aria-label='Запустить тест квеста #{q['id']}' href='/play/{esc(q['access_code'])}'><span aria-hidden='true'>🧪</span><span class='sr-only'>Запустить тест квеста #{q['id']}</span></a>"
+                                        f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action btn btn-ghost' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}'><span aria-hidden='true'>{'⏸' if q['active'] else '🟢'}</span><span class='sr-only'>{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}</span></button></form>"
                     f"</div></td></tr>"
                 )
 
@@ -476,8 +498,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             steps_block = ''
             if selected_id:
                 title_en_input = f"<input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>" if show_english else ''
-                step_rows = ''.join([f"<div class='step-row'><input type='hidden' name='step_id' value='{st['id']}'><input class='step-idx' name='step_idx' type='number' min='1' value='{st['idx']}' required><textarea name='step_prompt' rows='2' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='step_password' placeholder='Пароль' value='{esc(st['password'])}' required></div>" for st in steps])
-                edit_form = f"<form method='post' action='/admin/quest/save' class='admin-form compact-form'><input type='hidden' name='id' value='{selected_id}'><input name='title' placeholder='Название' maxlength='256' required value='{title}'>{title_en_input}<input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'><label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><section class='steps-compact'><h3>Этапы</h3><div id='steps-container'>{step_rows}</div><button type='button' id='add-step-btn' class='btn-secondary btn-outline'>+ Этап</button></section><button class='btn'>Сохранить квест</button></form>"
+                step_rows = ''.join([f"<div class='step-row'><input type='hidden' name='step_id' value='{st['id']}'><input class='step-idx' name='step_idx' type='number' min='1' value='{st['idx']}' required><textarea name='step_prompt' rows='2' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='step_password' placeholder='Пароль' value='{esc(st['password'])}' required><button type='button' class='btn-secondary btn-outline step-remove-btn'>− Этап</button></div>" for st in steps])
+                edit_form = f"<form method='post' action='/admin/quest/save' class='admin-form compact-form'><input type='hidden' name='id' value='{selected_id}'><input name='title' placeholder='Название' maxlength='256' required value='{title}'>{title_en_input}<input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'><label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><p class='muted'>Код доступа: <strong>{esc(selected['access_code'])}</strong></p><section class='steps-compact'><h3>Этапы</h3><div id='steps-container'>{step_rows}</div><div class='step-actions'><button type='button' id='add-step-btn' class='btn-secondary btn-outline'>+ Этап</button></div></section><button class='btn'>Сохранить квест</button></form>"
 
             page = f"""
 <main class='card admin-card screen-quest-form'>
@@ -502,7 +524,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
   </section>
 
   <section class='quest-edit-panel'>
-    <h2>{'Редактирование квеста #' + str(selected_id) if selected_id else 'Выберите квест из таблицы'}</h2>
+    <h2>{'Редактирование квеста #' + str(selected_id) if selected_id else ''}</h2>
     {edit_form if selected_id else ""}
   </section>
 
@@ -523,16 +545,17 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
     tbodyRows.forEach(r=>r.remove()); rows.forEach(r=>table.appendChild(r));
   }}
   [filter,status,sort].forEach(el=>el.addEventListener('input',apply)); apply();
-  document.querySelectorAll('.copy-link-btn').forEach(btn=>btn.addEventListener('click',async()=>{{const url=window.location.origin+btn.dataset.path;try{{await navigator.clipboard.writeText(url);btn.textContent='✅';setTimeout(()=>btn.textContent='🔗',1000);}}catch(e){{prompt('Скопируйте URL:',url);}}}}));
+  document.querySelectorAll('.copy-link-btn').forEach(btn=>btn.addEventListener('click',async()=>{{const url=window.location.origin+btn.dataset.path;try{{await navigator.clipboard.writeText(url);const icon=btn.querySelector('span[aria-hidden=true]');if(icon)icon.textContent='✅';setTimeout(()=>{{if(icon)icon.textContent='🔗';}},1000);}}catch(e){{prompt('Скопируйте URL:',url);}}}}));
   const stepsContainer=document.getElementById('steps-container');
   const addBtn=document.getElementById('add-step-btn');
   if(stepsContainer&&addBtn){{
     addBtn.addEventListener('click',()=>{{
       const row=document.createElement('div');
       row.className='step-row';
-      row.innerHTML=\"<input type='hidden' name='step_id' value=''><input class='step-idx' name='step_idx' type='number' min='1' placeholder='#' required><textarea name='step_prompt' rows='2' placeholder='Загадка' required></textarea><input name='step_password' placeholder='Пароль' required>\";
+      row.innerHTML=\"<input type='hidden' name='step_id' value=''><input class='step-idx' name='step_idx' type='number' min='1' placeholder='#' required><textarea name='step_prompt' rows='2' placeholder='Загадка' required></textarea><input name='step_password' placeholder='Пароль' required><button type='button' class='btn-secondary btn-outline step-remove-btn'>− Этап</button>\";
       stepsContainer.appendChild(row);
     }});
+    stepsContainer.addEventListener('click',(e)=>{{const target=e.target; if(target&&target.classList.contains('step-remove-btn')){{target.closest('.step-row')?.remove();}}}});
   }}
 }})();
 </script>
@@ -594,7 +617,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 action = 'admin.quest.updated'
             else:
                 active = 0
-                cur.execute('INSERT INTO quests(title,title_en,final_location,active,quest_time_limit_sec) VALUES (?,?,?,?,?)', (title, title_en, final_location, active, quest_time_limit_sec))
+                access_code = self.generate_quest_code(cur)
+                cur.execute('INSERT INTO quests(title,title_en,final_location,active,quest_time_limit_sec,access_code) VALUES (?,?,?,?,?,?)', (title, title_en, final_location, active, quest_time_limit_sec, access_code))
                 quest_id = cur.lastrowid
                 action = 'admin.quest.created'
             step_ids = data.get('step_id', [])
@@ -623,7 +647,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     cur.execute('DELETE FROM steps WHERE id=? AND quest_id=?', (existing_id, quest_id))
             c.commit(); c.close()
             self.audit('admin', action, target=f'quest:{quest_id}', metadata={'quest_id': quest_id})
-            self.send_response(303); self.send_header('Location', f'/admin/quest/edit?id={quest_id}'); self.end_headers()
+            self.send_response(303); self.send_header('Location', '/admin/quest/new'); self.end_headers()
 
         def toggle_quest(self, data):
             quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)
@@ -659,7 +683,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 cur.execute('INSERT INTO steps(quest_id,idx,prompt,password,step_time_limit_sec) VALUES (?,?,?,?,?)', (quest_id, idx, prompt, password, step_time_limit_sec))
             c.commit(); c.close()
             self.audit('editor', 'editor.step.saved', target=f'quest:{quest_id}', metadata={'quest_id': quest_id, 'step_id': step_id, 'idx': idx})
-            self.send_response(303); self.send_header('Location', f'/admin/quest/edit?id={quest_id}'); self.end_headers()
+            self.send_response(303); self.send_header('Location', '/admin/quest/new'); self.end_headers()
 
         def import_quest_json(self, data):
             payload = data.get('payload', ['{}'])[0]
