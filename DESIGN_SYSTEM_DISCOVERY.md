@@ -330,3 +330,62 @@ The design must maintain its bold personality across all screen sizes while adap
 *   **Icons**: Import specific icons from `lucide-react` as needed (Zap, Lock, Layers, Globe, Check, etc.)
 
 This is not a generic dark theme. This is the **Bitcoin DeFi aesthetic**—engineered for precision, security, and digital value.
+
+## Screen inventory and migration status (`canno/http/handlers.py`)
+
+### Iteration 1 — user journey (completed)
+
+1. `render_home`
+   - Typography roles: display H1 title, supportive intro body, mono-like CTA emphasis via button weight.
+   - Component blocks: hero card, logo block, quest-entry CTA form, secondary organizer CTA.
+   - Animation accents/limits: ambient background + CTA shimmer + input pulse; disabled by `prefers-reduced-motion` and on narrow portrait layouts.
+
+2. `render_play`
+   - Typography roles: H1 quest title, muted progress metadata, prompt body copy, timer in mono/data role.
+   - Component blocks: progress bar, timer card, answer form CTA, hint/status copy.
+   - Animation accents/limits: progress transition and timer danger state; no mandatory motion for completion of core task.
+
+3. `render_login`
+   - Typography roles: compact heading and form labels/placeholders.
+   - Component blocks: auth card, credential form, back-navigation ghost CTA.
+   - Animation accents/limits: inherits global hover/focus glow only; no extra continuous motion.
+
+### Iteration 2 — admin journey (completed)
+
+4. `render_admin`
+   - Typography roles: section H1 + CTA labels.
+   - Component blocks: admin hub card with navigation CTA stack.
+   - Animation accents/limits: hover lift/glow only.
+
+5. `render_quest_create`
+   - Typography roles: H1, muted helper copy, form labels.
+   - Component blocks: create form card, inline duration controls, return CTA.
+   - Animation accents/limits: focus glow and button hover, no decorative loops.
+
+6. `render_quest_form`
+   - Typography roles: H1 + subheadings + muted metadata.
+   - Component blocks: filter toolbar, quests table, status badges, icon actions, edit form, steps form cluster.
+   - Animation accents/limits: active-status pulse/ping badge is informational only and can be visually ignored.
+
+7. `render_admin_settings`
+   - Typography roles: H1, section H2s, form labels/help text.
+   - Component blocks: settings CTA links, settings form, JSON import form.
+   - Animation accents/limits: standard focus/hover glow only.
+
+8. `render_audit`
+   - Typography roles: H1, mono-like table headers/technical metadata block.
+   - Component blocks: filter form, export CTA link, audit table.
+   - Animation accents/limits: no persistent animation; table readability prioritized.
+
+9. `render_metrics`
+   - Typography roles: H1 placeholder headline.
+   - Component blocks: metrics card shell.
+   - Animation accents/limits: no custom motion yet.
+
+### Token consistency checklist used during migration
+
+- Colors use the existing token set (`--background`, `--surface`, `--foreground`, `--muted`, `--primary`, `--secondary`, `--tertiary`).
+- Radius remains bounded by card/input/button primitives (16px cards, 12px fields, pill CTAs).
+- Borders keep 1px structure with rest/hover/focus token transitions.
+- Glow effects remain token-tinted (orange/gold); no new arbitrary hex shadows were introduced.
+- Legacy unused utility rules (`.btn-link`, `.tab-btn`, `.tabs`, `u-*` helpers) were removed after screen migration.
