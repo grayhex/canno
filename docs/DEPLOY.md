@@ -53,6 +53,13 @@ PY
 
 Самый простой и быстрый production-режим:
 
+
+Рекомендуемое значение для Docker + SQLite в `.env`:
+
+```dotenv
+CANNO_DATABASE_URL=sqlite:////data/canno.db
+```
+
 ```bash
 docker compose up -d --build
 ```
@@ -122,6 +129,7 @@ docker compose up -d --build
 
 Создание бэкапа SQLite:
 
+> Для Docker используйте `CANNO_DATABASE_URL=sqlite:////data/canno.db`.
 > Для относительного файла БД используйте `canno.db` или `sqlite://./canno.db`.
 > Не используйте `sqlite:///canno.db`, это интерпретируется как `/canno.db`.
 
