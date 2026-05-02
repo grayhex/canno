@@ -15,7 +15,7 @@ def html(body):
         "<nav class='top-nav-main' aria-label='Основное меню'>"
         "<button id='nav-back' class='top-nav-btn btn btn-outline' type='button'><span class='nav-ico' aria-hidden='true'>←</span>Назад</button>"
         "<a id='nav-home' class='top-nav-btn top-nav-link btn btn-outline' href='/' title='Домой' aria-label='Домой'><span class='nav-ico' aria-hidden='true'>⌂</span><span class='sr-only'>Домой</span></a>"
-        "<a class='top-nav-btn top-nav-link btn btn-outline top-nav-icon-btn' href='/admin/login' title='Вход' aria-label='Вход'><span class='nav-ico' aria-hidden='true'>🔐</span><span class='sr-only'>Вход</span></a>"
+        "<a class='top-nav-btn top-nav-link btn btn-outline top-nav-admin-btn' href='/admin/login' title='Вход в админку' aria-label='Вход в админку'><span class='nav-ico' aria-hidden='true'>🔐</span><span>Вход в админку</span></a>"
         "</nav>"
         "</header>"
         "<div class='bg-noise'></div><div class='bg-grid'></div>"

@@ -365,7 +365,6 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 "<button class='quest-enter-btn btn'>Войти в квест</button>"
                 "</div>"
                 "</form>"
-                f"<div class='player-guide-ticker' role='note' aria-label='Подсказка игрока'><p class='player-guide-track'><span>{guide}</span><span aria-hidden='true'>{guide}</span></p></div>"
                 "</div>"
                 "</section>"
                 "</main>"
@@ -409,7 +408,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                             (quest['id'], participant_token, service.now(), service.now(), 'in_progress'),
                         )
                         c.commit()
-                        p = cur.execute('SELECT * FROM participants WHERE token=?', (participant_token,)).fetchone()
+                        self.send_response(303)
+                        self.send_header('Location', f'/play/{participant_token}')
+                        self.end_headers()
+                        return
                 if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
                 q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
