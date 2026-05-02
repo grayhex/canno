@@ -174,12 +174,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.export_audit_csv(p.query); return
                 if p.path == '/admin/quest/new':
                     if not self.require_editor(): return
-                    self.render_quest_form(); return
+                    self.render_quest_create(); return
                 if p.path == '/admin/quest/edit':
                     if not self.require_editor(): return
                     quest_id = service.parse_int(parse_qs(p.query).get('id', [''])[0], minimum=1)
-                    if not quest_id:
-                        self.send_html(error_page(400, 'Некорректные данные', 'id квеста обязателен'), 400); return
                     self.render_quest_form(quest_id); return
                 if p.path == '/admin/quests/export.json':
                     if not self.require_admin(): return
@@ -437,6 +435,26 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_metrics(self, query):
             self.send_html(html("<main class='card'><h1>Метрики</h1></main>"))
 
+
+        def render_quest_create(self):
+            show_english = self.is_english_enabled()
+            page = f"""
+<main class='card admin-card'>
+  <h1>➕ Добавить новый квест</h1>
+  <p class='muted'>Страница выделена отдельно для дальнейших доработок.</p>
+  <form method='post' action='/admin/quest/save' class='admin-form'>
+    <input name='title' placeholder='Название' maxlength='256' required>
+    {'<input name="title_en" placeholder="Название (EN)" maxlength="256">' if show_english else ''}
+    <input name='final_location' placeholder='Финальная локация' maxlength='512'>
+    <label for='quest-time-amount-new'>Лимит на весь квест</label>
+    <div class='inline-time'><input id='quest-time-amount-new' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div>
+    <button>Создать квест</button>
+  </form>
+  <a class='link-btn' href='/admin/quest/edit'>← Вернуться к таблице квестов</a>
+</main>
+"""
+            self.send_html(html(page))
+
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             c = repo.connect(); cur = c.cursor()
@@ -456,44 +474,79 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             title = esc(selected['title']) if selected else ''
             title_en = esc(selected['title_en']) if selected else ''
             final_location = esc(selected['final_location']) if selected else ''
-            time_limit = selected['quest_time_limit_sec'] if selected and selected['quest_time_limit_sec'] else ''
-            checked = 'checked' if selected and selected['active'] else ''
 
             row_items = []
             for q in quests:
-                toggle_label = 'Отключить' if q['active'] else 'Включить'
-                status = '✅' if q['active'] else '⏸️'
+                status_badge = '<span class="status-badge status-active">Активен</span>' if q['active'] else '<span class="status-badge status-paused">Пауза</span>'
                 row_items.append(
-                    f"<tr><td>{q['id']}</td><td>{esc(q['title'])}<br><small class='muted'>share: /play/{q['id']}</small></td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
-                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть для редактирования</a><a class='link-btn' href='/play/{q['id']}'>Запустить для теста</a>"
-                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
+                    f"<tr data-title='{esc(q['title']).lower()}' data-status='{'active' if q['active'] else 'paused'}' data-limit='{q['quest_time_limit_sec'] or 0}' data-id='{q['id']}'>"
+                    f"<td>{q['id']}</td><td><strong>{esc(q['title'])}</strong><br><small class='muted'>{esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{q['quest_time_limit_sec'] or '—'} сек</td>"
+                    f"<td><div class='action-icon-group'>"
+                    f"<a class='icon-action' title='Редактировать' aria-label='Редактировать' href='/admin/quest/edit?id={q['id']}'>✏️</a>"
+                    f"<a class='icon-action' title='Запустить тест' aria-label='Запустить тест' href='/play/{q['id']}'>▶️</a>"
+                    f"<button class='icon-action copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать URL квеста' data-path='/play/{q['id']}'>🔗</button>"
+                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'}'>{'⏸️' if q['active'] else '✅'}</button></form>"
+                    f"</div></td></tr>"
                 )
+
             rows = ''.join(row_items)
-            heading = f"Редактирование квеста #{selected_id}" if selected_id else 'Список квестов'
+            edit_form = ''
+            steps_block = ''
+            if selected_id:
+                title_en_input = f"<input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>" if show_english else ''
+                edit_form = f"<form method='post' action='/admin/quest/save' class='admin-form'><input type='hidden' name='id' value='{selected_id}'><input name='title' placeholder='Название' maxlength='256' required value='{title}'>{title_en_input}<input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'><label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Сохранить квест</button></form>"
+                step_forms = ''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])
+                steps_block = f"<section class='tab-pane active'><h2>Этапы квеста</h2>{step_forms}<form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Добавить этап</button></form></section>"
 
             page = f"""
 <main class='card admin-card'>
-  <h1>🧩 Квесты и настройки</h1>
-  <p class='muted'>Только интерфейс работы с квестами: создание, редактирование, этапы и пароли.</p>
-  <h2>{heading}</h2>
-  <section id='tab-list' class='tab-pane active'><h2>Список квестов</h2>
-  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div></section>
-  <form method='post' action='/admin/quest/save' class='admin-form'>
-    <input type='hidden' name='id' value='{selected_id}'>
-    <h2>{'Редактирование квеста' if selected_id else 'Добавить новый'}</h2>
-    <section id='tab-quest' class='tab-pane active'>
-    <input name='title' placeholder='Название' maxlength='256' required value='{title}'>
-    {'<input name=\'title_en\' placeholder=\'Название (EN)\' maxlength=\'256\' value=\''+title_en+'\'>' if show_english else ''}
-    <input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'>
-    <label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><small class='muted'>Оставьте пустым, если лимита нет.</small>
-    
-    <button>Сохранить квест</button>
-    </section>
-  </form>
-  <section id='tab-steps' class='tab-pane active'><h2>Этапы квеста</h2>
-  {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
-  <form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Добавить этап</button></form>
-</section></main>
+  <h1>🧩 Управление квестами</h1>
+  <p class='muted'>Единый интерфейс для администратора и редактора.</p>
+
+  <section class='quest-list-panel'>
+    <div class='quest-list-toolbar'>
+      <input id='quest-filter' type='search' placeholder='Фильтр по названию...'>
+      <select id='quest-status-filter'>
+        <option value='all'>Все статусы</option>
+        <option value='active'>Активные</option>
+        <option value='paused'>На паузе</option>
+      </select>
+      <select id='quest-sort'>
+        <option value='id_desc'>Сначала новые</option>
+        <option value='id_asc'>Сначала старые</option>
+        <option value='title_asc'>По названию А-Я</option>
+        <option value='title_desc'>По названию Я-А</option>
+      </select>
+      <a class='link-btn new-quest-link' href='/admin/quest/new'>+ Добавить новый</a>
+    </div>
+    <div class='table-wrap'><table id='quest-table'><tr><th>ID</th><th>Квест</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div>
+  </section>
+
+  <section class='quest-edit-panel'>
+    <h2>{'Редактирование квеста #' + str(selected_id) if selected_id else 'Выберите квест из таблицы для редактирования'}</h2>
+    {edit_form if selected_id else "<p class='muted'>Создание нового квеста вынесено на отдельную страницу.</p>"}
+  </section>
+
+  {steps_block}
+</main>
+<script>
+(function(){{
+  const table=document.getElementById('quest-table'); if(!table) return;
+  const filter=document.getElementById('quest-filter');
+  const status=document.getElementById('quest-status-filter');
+  const sort=document.getElementById('quest-sort');
+  const tbodyRows=Array.from(table.querySelectorAll('tr')).slice(1);
+  function apply(){{
+    const f=(filter.value||'').toLowerCase();
+    const s=status.value;
+    const rows=[...tbodyRows].filter(r=>r.dataset.title.includes(f)&&(s==='all'||r.dataset.status===s));
+    rows.sort((a,b)=>{{if(sort.value==='id_asc')return Number(a.dataset.id)-Number(b.dataset.id);if(sort.value==='title_asc')return a.dataset.title.localeCompare(b.dataset.title,'ru');if(sort.value==='title_desc')return b.dataset.title.localeCompare(a.dataset.title,'ru');return Number(b.dataset.id)-Number(a.dataset.id)}});
+    tbodyRows.forEach(r=>r.remove()); rows.forEach(r=>table.appendChild(r));
+  }}
+  [filter,status,sort].forEach(el=>el.addEventListener('input',apply)); apply();
+  document.querySelectorAll('.copy-link-btn').forEach(btn=>btn.addEventListener('click',async()=>{{const url=window.location.origin+btn.dataset.path;try{{await navigator.clipboard.writeText(url);btn.textContent='✅';setTimeout(()=>btn.textContent='🔗',1000);}}catch(e){{prompt('Скопируйте URL:',url);}}}}));
+}})();
+</script>
 """
             self.send_html(html(page))
 
