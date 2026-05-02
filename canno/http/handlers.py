@@ -224,7 +224,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
             title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form><div class='nav-links nav-inline'><a class='btn btn-ghost' href='/'>← Назад в главное меню</a></div></main>"))
+            self.send_html(html(f"<main class='card auth-card screen-login'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post' class='form-stack'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form><div class='nav-links nav-inline'><a class='btn btn-ghost' href='/'>← Назад в главное меню</a></div></main>"))
 
         def handle_login(self, data, role='admin'):
             ip = self.client_ip()
@@ -304,7 +304,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             show_logo = self.get_app_setting('homepage_logo_enabled', '1') == '1'
             logo_html = "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>" if show_logo else "<div class='home-logo home-logo-hidden' aria-hidden='true'></div>"
             self.send_html(html(
-                "<main class='card home-card'>"
+                "<main class='card home-card screen-home'>"
                 "<section class='home-hero v-section'>"
                 f"{logo_html}"
                 "<div class='home-copy'>"
@@ -377,7 +377,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     remaining = (deadline - service.now_dt()).total_seconds()
                     remaining_html = f"<div class='timer-wrap'><p class='muted'>Осталось времени на этап</p><p id='step-timer' class='timer' data-remaining='{int(remaining)}' data-warning='120'>{self.format_seconds(remaining)}</p><p id='step-warning' class='warning hidden'>Мало времени — попробуйте самый очевидный вариант ответа.</p></div>"
                 title = q['title_en'] if locale == 'en' and q['title_en'] else q['title']
-                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button class='btn'>Проверить ответ</button></form><p class='muted'>💡 Совет: ответ без лишних пробелов и символов.</p></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
+                self.send_html(html(f"""<main class='card play-card screen-play'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post' class='form-stack'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button class='btn'>Проверить ответ</button></form><p class='muted'>💡 Совет: ответ без лишних пробелов и символов.</p></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
             finally:
                 c.close()
 
@@ -427,26 +427,26 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quest/new'>Редактор квестов</a><a class='btn btn-ghost' href='/admin/settings'>Технические настройки</a><a class='btn btn-ghost' href='/play/1'>Запустить квест #1</a><a class='btn btn-ghost' href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card admin-hub-card screen-admin'><h1>⚙️ Админка</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quest/new'>Редактор квестов</a><a class='btn btn-ghost' href='/admin/settings'>Технические настройки</a><a class='btn btn-ghost' href='/play/1'>Запустить квест #1</a><a class='btn btn-ghost' href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
             logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'static/images/logo1.png'))
             logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
+            self.send_html(html(f"<main class='card admin-settings-card screen-admin-settings'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
 
         def render_metrics(self, query):
-            self.send_html(html("<main class='card'><h1>Метрики</h1></main>"))
+            self.send_html(html("<main class='card metrics-card screen-metrics'><h1>Метрики</h1></main>"))
 
 
         def render_quest_create(self):
             show_english = self.is_english_enabled()
             page = f"""
-<main class='card admin-card'>
+<main class='card admin-card screen-quest-create'>
   <h1>➕ Добавить новый квест</h1>
   <p class='muted'>Страница выделена отдельно для дальнейших доработок.</p>
   <form method='post' action='/admin/quest/save' class='admin-form'>
@@ -506,7 +506,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 steps_block = f"<section class='tab-pane active'><h2>Этапы квеста</h2>{step_forms}<form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn'>Добавить этап</button></form></section>"
 
             page = f"""
-<main class='card admin-card'>
+<main class='card admin-card screen-quest-form'>
   <h1>🧩 Управление квестами</h1>
   <p class='muted'>Единый интерфейс для администратора и редактора.</p>
 
@@ -720,7 +720,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 for r in rows
             )
             export_link = f"/admin/audit/export.csv?action={action}&quest_id={quest_id or ''}&from={date_from}&to={date_to}"
-            self.send_html(html(f"<main class='card'><h1>Аудит</h1><form><input name='from' placeholder='from ISO' value='{html_lib.escape(date_from)}'><input name='to' placeholder='to ISO' value='{html_lib.escape(date_to)}'><input name='action' placeholder='action' value='{html_lib.escape(action)}'><input name='quest_id' placeholder='quest_id' value='{quest_id or ''}'><button class='btn'>Фильтр</button></form><p><a href='{html_lib.escape(export_link)}'>Экспорт CSV</a></p><table><tr><th>Время</th><th>Actor</th><th>Action</th><th>Target</th><th>Metadata</th><th>IP</th></tr>{items}</table></main>"))
+            self.send_html(html(f"<main class='card audit-card screen-audit'><h1>Аудит</h1><form class='audit-filters form-stack'><input name='from' placeholder='from ISO' value='{html_lib.escape(date_from)}'><input name='to' placeholder='to ISO' value='{html_lib.escape(date_to)}'><input name='action' placeholder='action' value='{html_lib.escape(action)}'><input name='quest_id' placeholder='quest_id' value='{quest_id or ''}'><button class='btn'>Фильтр</button></form><p><a href='{html_lib.escape(export_link)}'>Экспорт CSV</a></p><table><tr><th>Время</th><th>Actor</th><th>Action</th><th>Target</th><th>Metadata</th><th>IP</th></tr>{items}</table></main>"))
 
         def export_audit_csv(self, query):
             params = parse_qs(query)
