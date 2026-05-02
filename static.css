@@ -32,6 +32,12 @@ button{background:linear-gradient(120deg,var(--primary),var(--primary-2));border
 .hint{background:#0f1730;padding:12px;border-radius:12px;border:1px solid #3f4e84}.error{color:#ff9cb6;font-weight:600}
 .nav-links{display:grid;gap:8px;margin-top:8px}.nav-inline{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .nav-links a,.link-btn{display:block;padding:8px 11px;border-radius:10px;background:#0e1734;border:1px solid #314073;text-decoration:none;color:#b7d3ff;transition:.2s}
+.home-card{text-align:center}
+.home-logo{max-width:220px;width:55%;height:auto;margin:4px auto 14px;display:block}
+.home-login-links{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin:10px 0 14px}
+.home-login-btn{display:block;padding:10px;border-radius:10px;background:#0e1734;border:1px solid #314073;text-decoration:none;color:#b7d3ff}
+.home-intro{margin:10px 0 16px}
+.quest-enter-form{text-align:left;max-width:420px;margin:0 auto}
 .action-group{display:flex;gap:8px;align-items:center}.action-group form{margin:0;flex:1}.action-group .link-btn{flex:1;text-align:center}
 a{color:#9ec1ff}
 .table-wrap{overflow:auto;border:1px solid #2d3b73;border-radius:12px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px 10px;border-bottom:1px solid #2a396f;text-align:left}th{background:#0c1533;position:sticky;top:0}

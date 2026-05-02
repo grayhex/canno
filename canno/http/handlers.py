@@ -105,13 +105,22 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             try:
                 p = urlparse(self.path)
                 if p.path == '/':
-                    self.send_html(html("<main class='card'><h1>🚀 Canno Quest</h1><p class='muted'>Современная квест-платформа с таймером, подсказками и аналитикой.</p><div class='nav-links'><a href='/admin'>Открыть админку</a><a href='/admin/login'>Войти как администратор</a></div><p>Для игрока откройте персональную ссылку формата <code>/play/&lt;token&gt;</code>.</p></main>")); return
+                    self.render_home(); return
                 if p.path == '/static.css':
                     css = Path('static.css').read_text(encoding='utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/css')
                     self.end_headers()
                     self.wfile.write(css.encode())
+                    return
+                if p.path == '/logo.png':
+                    logo = Path('logo.png')
+                    if not logo.exists():
+                        self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/png')
+                    self.end_headers()
+                    self.wfile.write(logo.read_bytes())
                     return
                 if p.path.startswith('/play/'):
                     token = service.sanitize_text(p.path.split('/play/')[1], 128)
@@ -172,6 +181,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if p.path == '/admin/quests/import':
                 if not self.require_admin(): return
                 return self.import_quest_json(data)
+            if p.path == '/admin/settings/save':
+                if not self.require_admin(): return
+                return self.save_admin_settings(data)
             if p.path == '/admin/quest/save':
                 if not self.require_editor(): return
                 return self.save_quest_settings(data)
@@ -233,6 +245,50 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.send_response(303)
             self.send_header('Location', '/admin/login')
             self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0')
+            self.end_headers()
+
+        def get_homepage_intro(self):
+            c = repo.connect(); cur = c.cursor()
+            try:
+                row = cur.execute("SELECT value FROM site_settings WHERE key='homepage_intro'").fetchone()
+                if row and row['value']:
+                    return row['value']
+            finally:
+                c.close()
+            return 'Добро пожаловать в Canno Quest! Введите адрес вашего квеста, чтобы начать приключение.'
+
+        def render_home(self):
+            intro = html_lib.escape(self.get_homepage_intro())
+            self.send_html(html(
+                "<main class='card home-card'>"
+                "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>"
+                "<h1>Canno Quest</h1>"
+                "<div class='home-login-links'>"
+                "<a href='/admin/login' class='home-login-btn'>🛡️ Вход администратора</a>"
+                "<a href='/editor/login' class='home-login-btn'>✍️ Вход редактора</a>"
+                "</div>"
+                f"<div class='home-intro'><p>{intro}</p></div>"
+                "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
+                "<label for='quest-token'>Адрес квеста</label>"
+                "<input id='quest-token' name='token' placeholder='Введите токен квеста' maxlength='128' required>"
+                "<button>Перейти к квесту</button>"
+                "</form>"
+                "</main>"
+            ))
+
+        def save_admin_settings(self, data):
+            intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
+            c = repo.connect(); cur = c.cursor()
+            try:
+                cur.execute(
+                    "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_intro', intro),
+                )
+                c.commit()
+            finally:
+                c.close()
+            self.send_response(303)
+            self.send_header('Location', '/admin/settings')
             self.end_headers()
 
         def render_play(self, token):
@@ -301,7 +357,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
-            self.send_html(html("<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{\"quests\": [ ... ]}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            intro = html_lib.escape(self.get_homepage_intro())
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><textarea name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
