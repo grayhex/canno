@@ -130,7 +130,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if p.path == '/admin/quest/new':
                     if not self.require_admin(): return
                     self.render_quest_form(); return
-                if p.path.startswith('/admin/quest/edit'):
+                if p.path == '/admin/quest/edit':
                     if not self.require_admin(): return
                     quest_id = service.parse_int(parse_qs(p.query).get('id', [''])[0], minimum=1)
                     if not quest_id:
@@ -157,6 +157,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if p.path == '/admin/quests/import':
                 if not self.require_admin(): return
                 return self.import_quest_json(data)
+            if p.path == '/admin/quest/save':
+                if not self.require_admin(): return
+                return self.save_quest_settings(data)
+            if p.path == '/admin/quest/toggle':
+                if not self.require_admin(): return
+                return self.toggle_quest(data)
             if p.path.startswith('/play/'):
                 return self.submit_password(service.sanitize_text(p.path.split('/play/')[1], 128), data.get('password', [''])[0])
             self.send_json({'error': 'not found'}, 404)
@@ -271,7 +277,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><p class='muted'>Быстрые действия и контроль состояния системы.</p><div class='nav-links'><a href='/admin/audit'>Журнал аудита</a><a href='/admin/quest/new'>Импорт/экспорт квестов</a><a href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><p class='muted'>Управляйте квестами, настройками и сервисными операциями в одном меню.</p><div class='nav-links'><a href='/admin/quest/new'>Квесты и настройки</a><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -281,15 +287,89 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
-            self.send_html(html("<main class='card'><h1>🧩 Управление квестами</h1><p class='muted'>Импортируйте сценарии, делайте бэкапы и держите базу в порядке.</p><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов JSON</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><form method='post' action='/admin/quests/import'><textarea name='payload' rows='12' placeholder='JSON payload'></textarea><button>Импортировать JSON</button></form></main>"))
-
-        def export_quests_json(self):
-            c = repo.connect()
-            quests = [dict(r) for r in c.execute('SELECT * FROM quests ORDER BY id').fetchall()]
-            for q in quests:
-                q['steps'] = [dict(s) for s in c.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (q['id'],)).fetchall()]
+            c = repo.connect(); cur = c.cursor()
+            quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests ORDER BY id DESC').fetchall()
+            selected = None
+            if quest_id:
+                selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests WHERE id=?', (quest_id,)).fetchone()
             c.close()
-            self.send_json({'quests': quests})
+
+            selected_id = selected['id'] if selected else ''
+            title = html_lib.escape(selected['title']) if selected else ''
+            title_en = html_lib.escape(selected['title_en']) if selected else ''
+            final_location = html_lib.escape(selected['final_location']) if selected else ''
+            time_limit = selected['quest_time_limit_sec'] if selected and selected['quest_time_limit_sec'] else ''
+            checked = 'checked' if selected and selected['active'] else ''
+
+            row_items = []
+            for q in quests:
+                toggle_label = 'Отключить' if q['active'] else 'Включить'
+                status = '✅' if q['active'] else '⏸️'
+                row_items.append(
+                    f"<tr><td>{q['id']}</td><td>{html_lib.escape(q['title'])}</td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
+                    f"<td><div class='nav-links'><a href='/admin/quest/edit?id={q['id']}'>Открыть</a>"
+                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button>{toggle_label}</button></form></div></td></tr>"
+                )
+            rows = ''.join(row_items)
+            heading = f"Редактирование квеста #{selected_id}" if selected_id else 'Новый квест'
+
+            page = f"""
+<main class='card'>
+  <h1>🧩 Квесты и настройки</h1>
+  <p class='muted'>Создавайте, редактируйте и включайте/выключайте квесты без ручного JSON.</p>
+  <div class='nav-links'><a href='/admin'>← Назад в админку</a><a href='/admin/quests/export.json'>Экспорт JSON</a></div>
+  <h2>{heading}</h2>
+  <form method='post' action='/admin/quest/save'>
+    <input type='hidden' name='id' value='{selected_id}'>
+    <input name='title' placeholder='Название (RU)' maxlength='256' required value='{title}'>
+    <input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>
+    <input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'>
+    <input name='quest_time_limit_sec' type='number' min='0' placeholder='Ограничение времени (сек)' value='{time_limit}'>
+    <label><input type='checkbox' name='active' {checked}> Активен</label>
+    <button>Сохранить квест</button>
+  </form>
+  <h2>Список квестов</h2>
+  <table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table>
+  <h2>Импорт JSON</h2>
+  <form method='post' action='/admin/quests/import'><textarea name='payload' rows='10' placeholder='{{"quests": [ ... ]}}'></textarea><button>Импортировать JSON</button></form>
+</main>
+"""
+            self.send_html(html(page))
+
+        def save_quest_settings(self, data):
+            quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)
+            title = service.sanitize_text(data.get('title', [''])[0], 256)
+            title_en = service.sanitize_text(data.get('title_en', [''])[0], 256)
+            final_location = service.sanitize_text(data.get('final_location', [''])[0], 512)
+            quest_time_limit_sec = service.parse_int(data.get('quest_time_limit_sec', [''])[0], minimum=0)
+            active = 1 if data.get('active', [''])[-1] in ('on', '1', 'true') else 0
+            if not title:
+                self.send_html(error_page(400, 'Некорректные данные', 'Название квеста обязательно'), 400); return
+            c = repo.connect(); cur = c.cursor()
+            if quest_id:
+                cur.execute('UPDATE quests SET title=?, title_en=?, final_location=?, active=?, quest_time_limit_sec=? WHERE id=?', (title, title_en, final_location, active, quest_time_limit_sec, quest_id))
+                action = 'admin.quest.updated'
+            else:
+                cur.execute('INSERT INTO quests(title,title_en,final_location,active,quest_time_limit_sec) VALUES (?,?,?,?,?)', (title, title_en, final_location, active, quest_time_limit_sec))
+                quest_id = cur.lastrowid
+                action = 'admin.quest.created'
+            c.commit(); c.close()
+            self.audit('admin', action, target=f'quest:{quest_id}', metadata={'quest_id': quest_id})
+            self.send_response(303); self.send_header('Location', f'/admin/quest/edit?id={quest_id}'); self.end_headers()
+
+        def toggle_quest(self, data):
+            quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)
+            if not quest_id:
+                self.send_html(error_page(400, 'Некорректные данные', 'id квеста обязателен'), 400); return
+            c = repo.connect(); cur = c.cursor()
+            row = cur.execute('SELECT active FROM quests WHERE id=?', (quest_id,)).fetchone()
+            if not row:
+                c.close(); self.send_html(error_page(404, 'Не найдено', 'Квест не найден'), 404); return
+            new_active = 0 if row['active'] else 1
+            cur.execute('UPDATE quests SET active=? WHERE id=?', (new_active, quest_id))
+            c.commit(); c.close()
+            self.audit('admin', 'admin.quest.toggled', target=f'quest:{quest_id}', metadata={'quest_id': quest_id, 'active': new_active})
+            self.send_response(303); self.send_header('Location', '/admin/quest/new'); self.end_headers()
 
         def import_quest_json(self, data):
             payload = data.get('payload', ['{}'])[0]
