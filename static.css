@@ -21,6 +21,7 @@ a{color:var(--foreground);transition:all .2s var(--ease-expo)}a:hover{color:#fff
 .app-shell{position:relative;min-height:100vh;overflow-x:hidden;padding:74px 14px 72px}
 .top-nav{position:fixed;top:10px;left:50%;transform:translateX(-50%);width:min(900px,calc(100% - 28px));display:flex;justify-content:space-between;align-items:flex-start;gap:8px;z-index:20;pointer-events:none}
 .top-nav-left{display:flex;gap:8px}
+.top-nav-right{display:flex;gap:8px}
 .top-nav-btn{pointer-events:auto;width:auto;min-width:92px;padding:7px 10px;border-radius:9px;font-size:13px;line-height:1.2;background:rgba(15,15,18,.75);border:1px solid var(--border-default);color:var(--foreground);backdrop-filter:blur(10px);text-decoration:none}
 .top-nav-link{display:inline-flex;align-items:center;justify-content:center}
 .top-nav-btn:hover{background:rgba(255,255,255,.1);border-color:var(--border-hover)}
@@ -37,6 +38,8 @@ a{color:var(--foreground);transition:all .2s var(--ease-expo)}a:hover{color:#fff
 .ambient-4{width:700px;height:500px;left:20%;bottom:-240px;background:radial-gradient(circle,rgba(94,106,210,.1),transparent 65%);filter:blur(130px);animation:pulseGlow 8s ease-in-out infinite}
 @keyframes float{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-20px) rotate(1deg)}}
 @keyframes pulseGlow{0%,100%{opacity:.8}50%{opacity:1}}
+@keyframes questPulse{0%,100%{box-shadow:0 0 0 1px rgba(94,106,210,.28),0 10px 32px rgba(94,106,210,.18),inset 0 1px 0 rgba(255,255,255,.14)}50%{box-shadow:0 0 0 1px rgba(104,114,217,.6),0 12px 46px rgba(94,106,210,.3),inset 0 1px 0 rgba(255,255,255,.24)}}
+@keyframes buttonShimmer{0%,100%{filter:brightness(1)}50%{filter:brightness(1.08)}}
 h1,h2{margin:0 0 10px;line-height:1.1;letter-spacing:-.02em}
 h1{font-size:clamp(2rem,7vw,4.2rem);background:linear-gradient(to bottom,#fff,#f1f1f8 55%,rgba(255,255,255,.72));-webkit-background-clip:text;background-clip:text;color:transparent}
 h2{font-size:clamp(1.2rem,3vw,2.2rem)}
@@ -54,13 +57,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 button{border:none;cursor:pointer;font-weight:600;color:#fff;background:#5E6AD2;box-shadow:0 0 0 1px rgba(94,106,210,.5),0 4px 12px rgba(94,106,210,.3),inset 0 1px 0 0 rgba(255,255,255,.2)}button:hover{background:var(--accent-bright)}button:active{transform:scale(.98)}
 .btn-secondary,.tab-btn{background:rgba(255,255,255,.05);color:var(--foreground);box-shadow:inset 0 1px 0 0 rgba(255,255,255,.12)}.tab-btn.active{background:#5E6AD2;color:#fff}
 .home-card{text-align:center}.home-logo{max-width:220px;width:55%;margin:0 auto 16px;display:block}
-.home-login-links,.nav-links{display:grid;gap:10px}.home-login-links{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:14px 0}
-.home-login-btn,.nav-links a,.link-btn{display:block;padding:10px 12px;border-radius:10px;text-decoration:none;color:var(--foreground);background:rgba(255,255,255,.05);border:1px solid var(--border-default)}
-.home-login-btn:hover,.nav-links a:hover,.link-btn:hover{background:var(--surface-hover);border-color:var(--border-hover)}
-.quest-enter-row{display:flex;justify-content:center;gap:8px;align-items:center;margin-top:8px}.quest-enter-row input{max-width:220px;width:100%;margin:0;padding:9px 10px}.quest-enter-btn{width:auto;min-width:110px;margin:0;padding:9px 12px}
+.nav-links{display:grid;gap:10px}
+.nav-links a,.link-btn{display:block;padding:10px 12px;border-radius:10px;text-decoration:none;color:var(--foreground);background:rgba(255,255,255,.05);border:1px solid var(--border-default)}
+.nav-links a:hover,.link-btn:hover{background:var(--surface-hover);border-color:var(--border-hover)}
+.quest-enter-row{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:14px}
+.quest-enter-row input{max-width:430px;width:100%;margin:0;padding:15px 16px;font-size:1.12rem;font-weight:600;letter-spacing:.01em;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid rgba(104,114,217,.55);box-shadow:0 0 0 1px rgba(94,106,210,.32),0 10px 38px rgba(94,106,210,.22),inset 0 1px 0 rgba(255,255,255,.14);animation:questPulse 2.8s ease-in-out infinite}
+.quest-enter-row input::placeholder{color:rgba(237,237,239,.9)}
+.quest-enter-row input:focus{transform:translateY(-1px) scale(1.01);box-shadow:0 0 0 2px rgba(94,106,210,.6),0 0 0 4px rgba(5,5,6,1),0 12px 46px rgba(94,106,210,.32)}
+.quest-enter-btn{width:auto;min-width:130px;margin:0;padding:14px 18px;font-size:1rem;animation:buttonShimmer 2.2s var(--ease-expo) infinite}
 .bar{height:10px;border-radius:999px;overflow:hidden;background:#0d0d10;border:1px solid var(--border-default)}.bar span{display:block;height:100%;background:linear-gradient(90deg,#5E6AD2,#7d87e8);transition:width .6s var(--ease-expo)}
 .timer-wrap{margin:12px 0 16px;padding:12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--border-default)}
 .timer{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}.timer-danger{color:#ff9cb6}.hidden{display:none}.warning{color:#ffd36b;font-weight:700}
 .table-wrap{overflow:auto;border:1px solid var(--border-default);border-radius:12px}table{width:100%;border-collapse:collapse}th,td{padding:9px 10px;border-bottom:1px solid var(--border-default);text-align:left}
-@media (max-width:768px){.app-shell{padding-top:64px}.card{padding:18px}h1{font-size:clamp(1.8rem,12vw,3rem)}.top-nav-menu-toggle{display:inline-flex;align-items:center;justify-content:center}.top-nav-mobile-panel{display:flex;position:absolute;top:48px;right:0;min-width:180px}.top-nav-left{gap:6px}.top-nav-left .top-nav-btn{min-width:auto}}
+@media (max-width:768px){.app-shell{padding-top:64px}.card{padding:18px}h1{font-size:clamp(1.8rem,12vw,3rem)}.top-nav-menu-toggle{display:inline-flex;align-items:center;justify-content:center}.top-nav-mobile-panel{display:flex;position:absolute;top:48px;right:0;min-width:180px}.top-nav-left,.top-nav-right{gap:6px}.top-nav-left .top-nav-btn,.top-nav-right .top-nav-btn{min-width:auto}.quest-enter-row{flex-direction:column}.quest-enter-row input{max-width:100%}.quest-enter-btn{width:100%}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.card:hover{transform:none}}
