@@ -97,7 +97,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             try:
                 p = urlparse(self.path)
                 if p.path == '/':
-                    self.send_html(html("<main class='card'><h1>Canno Quest</h1><p>Открой ссылку участника /play/&lt;token&gt; или админку /admin</p></main>")); return
+                    self.send_html(html("<main class='card'><h1>🚀 Canno Quest</h1><p class='muted'>Современная квест-платформа с таймером, подсказками и аналитикой.</p><div class='nav-links'><a href='/admin'>Открыть админку</a><a href='/admin/login'>Войти как администратор</a></div><p>Для игрока откройте персональную ссылку формата <code>/play/&lt;token&gt;</code>.</p></main>")); return
                 if p.path == '/static.css':
                     css = Path('static.css').read_text(encoding='utf-8')
                     self.send_response(200)
@@ -163,7 +163,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def render_login(self, error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
-            self.send_html(html(f"<main class='card'><h1>Вход в админку</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form></main>"))
+            self.send_html(html(f"<main class='card'><h1>🔐 Вход в админку</h1><p class='muted'>Управление квестами, импорт/экспорт и аудит.</p>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form></main>"))
 
         def handle_login(self, data):
             ip = self.client_ip()
@@ -227,7 +227,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     remaining = (deadline - service.now_dt()).total_seconds()
                     remaining_html = f"<div class='timer-wrap'><p class='muted'>Осталось времени на этап</p><p id='step-timer' class='timer' data-remaining='{int(remaining)}' data-warning='120'>{self.format_seconds(remaining)}</p><p id='step-warning' class='warning hidden'>Мало времени — попробуйте самый очевидный вариант ответа.</p></div>"
                 title = q['title_en'] if locale == 'en' and q['title_en'] else q['title']
-                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
+                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form><p class='muted'>💡 Совет: ответ без лишних пробелов и символов.</p></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
             finally:
                 c.close()
 
@@ -271,7 +271,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>Админка</h1><p><a href='/admin/audit'>Журнал аудита</a></p></main>"))
+            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><p class='muted'>Быстрые действия и контроль состояния системы.</p><div class='nav-links'><a href='/admin/audit'>Журнал аудита</a><a href='/admin/quest/new'>Импорт/экспорт квестов</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -281,7 +281,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
-            self.send_html(html("<main class='card'><h1>Квест</h1><p><a href='/admin/quests/export.json'>Экспорт квестов JSON</a></p><form method='post' action='/admin/quests/import'><textarea name='payload' rows='12' placeholder='JSON payload'></textarea><button>Импортировать JSON</button></form><p><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></p></main>"))
+            self.send_html(html("<main class='card'><h1>🧩 Управление квестами</h1><p class='muted'>Импортируйте сценарии, делайте бэкапы и держите базу в порядке.</p><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов JSON</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><form method='post' action='/admin/quests/import'><textarea name='payload' rows='12' placeholder='JSON payload'></textarea><button>Импортировать JSON</button></form></main>"))
 
         def export_quests_json(self):
             c = repo.connect()
