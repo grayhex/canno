@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY app.py backup_db.py static.css ./
+COPY app.py static.css ./
+COPY scripts ./scripts
 COPY canno ./canno
 
 EXPOSE 8000
