@@ -1,6 +1,6 @@
 import logging
 import secrets
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 
 from canno import config
 from canno.http.handlers import create_handler
@@ -62,4 +62,4 @@ H = create_handler(repo, service, ADMIN_PASSWORD_HASH_VALUE, AUTH_STORE)
 if __name__ == '__main__':
     init_db()
     logger.info('Starting HTTP server on 0.0.0.0:8000')
-    HTTPServer(('0.0.0.0', 8000), H).serve_forever()
+    ThreadingHTTPServer(('0.0.0.0', 8000), H).serve_forever()
