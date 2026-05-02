@@ -84,6 +84,8 @@ python3 -m unittest -v
 
 ```bash
 python3 scripts/backup_db.py --db canno.db --out-dir backups
+# Если задаете sqlite URL, используйте sqlite://./canno.db (или просто путь canno.db),
+# а не sqlite:///canno.db, чтобы не получить /canno.db в корне ФС.
 ```
 
 Восстановить:
