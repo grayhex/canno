@@ -294,10 +294,13 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec FROM quests WHERE id=?', (quest_id,)).fetchone()
             c.close()
 
+            def esc(value):
+                return html_lib.escape(str(value or ''))
+
             selected_id = selected['id'] if selected else ''
-            title = html_lib.escape(selected['title']) if selected else ''
-            title_en = html_lib.escape(selected['title_en']) if selected else ''
-            final_location = html_lib.escape(selected['final_location']) if selected else ''
+            title = esc(selected['title']) if selected else ''
+            title_en = esc(selected['title_en']) if selected else ''
+            final_location = esc(selected['final_location']) if selected else ''
             time_limit = selected['quest_time_limit_sec'] if selected and selected['quest_time_limit_sec'] else ''
             checked = 'checked' if selected and selected['active'] else ''
 
@@ -306,20 +309,20 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 toggle_label = 'Отключить' if q['active'] else 'Включить'
                 status = '✅' if q['active'] else '⏸️'
                 row_items.append(
-                    f"<tr><td>{q['id']}</td><td>{html_lib.escape(q['title'])}</td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
-                    f"<td><div class='nav-links'><a href='/admin/quest/edit?id={q['id']}'>Открыть</a>"
-                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button>{toggle_label}</button></form></div></td></tr>"
+                    f"<tr><td>{q['id']}</td><td>{esc(q['title'])}</td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
+                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть</a>"
+                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
                 )
             rows = ''.join(row_items)
             heading = f"Редактирование квеста #{selected_id}" if selected_id else 'Новый квест'
 
             page = f"""
-<main class='card'>
+<main class='card admin-card'>
   <h1>🧩 Квесты и настройки</h1>
   <p class='muted'>Создавайте, редактируйте и включайте/выключайте квесты без ручного JSON.</p>
-  <div class='nav-links'><a href='/admin'>← Назад в админку</a><a href='/admin/quests/export.json'>Экспорт JSON</a></div>
+  <div class='nav-links nav-inline'><a href='/admin'>← Назад в админку</a><a href='/admin/quests/export.json'>Экспорт JSON</a></div>
   <h2>{heading}</h2>
-  <form method='post' action='/admin/quest/save'>
+  <form method='post' action='/admin/quest/save' class='admin-form'>
     <input type='hidden' name='id' value='{selected_id}'>
     <input name='title' placeholder='Название (RU)' maxlength='256' required value='{title}'>
     <input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>
@@ -329,9 +332,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
     <button>Сохранить квест</button>
   </form>
   <h2>Список квестов</h2>
-  <table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table>
+  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div>
   <h2>Импорт JSON</h2>
-  <form method='post' action='/admin/quests/import'><textarea name='payload' rows='10' placeholder='{{"quests": [ ... ]}}'></textarea><button>Импортировать JSON</button></form>
+  <form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{"quests": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form>
 </main>
 """
             self.send_html(html(page))
