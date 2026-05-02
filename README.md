@@ -39,7 +39,15 @@ export CANNO_EDITOR_PASSWORD='change-me-editor'
 python3 app.py
 ```
 
-Откройте `http://localhost:8000`.
+Для доступа с телефона в той же локальной сети открывайте `http://<IP_КОМПЬЮТЕРА>:8000`
+(например `http://192.168.1.15:8000`).
+
+Опционально можно задать хост/порт:
+
+```bash
+export CANNO_HTTP_HOST=0.0.0.0
+export CANNO_HTTP_PORT=8000
+```
 
 ---
 

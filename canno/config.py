@@ -32,6 +32,9 @@ LOGIN_WINDOW_SECONDS = 300
 MAX_STEP_ATTEMPTS = 8
 STEP_ATTEMPT_WINDOW_SECONDS = 300
 
+HTTP_HOST = os.getenv('CANNO_HTTP_HOST', '0.0.0.0')
+HTTP_PORT = int(os.getenv('CANNO_HTTP_PORT', '8000'))
+
 
 def database_scheme() -> str:
     return urlparse(CANNO_DATABASE_URL).scheme

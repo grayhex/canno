@@ -61,5 +61,7 @@ H = create_handler(repo, service, ADMIN_PASSWORD_HASH_VALUE, AUTH_STORE)
 
 if __name__ == '__main__':
     init_db()
-    logger.info('Starting HTTP server on 0.0.0.0:8000')
-    ThreadingHTTPServer(('0.0.0.0', 8000), H).serve_forever()
+    host = config.HTTP_HOST
+    port = config.HTTP_PORT
+    logger.info('Starting HTTP server on %s:%s', host, port)
+    ThreadingHTTPServer((host, port), H).serve_forever()
