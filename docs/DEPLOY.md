@@ -123,7 +123,7 @@ docker compose up -d --build
 Создание бэкапа SQLite:
 
 ```bash
-python3 backup_db.py --db canno.db --out-dir backups
+python3 scripts/backup_db.py --db canno.db --out-dir backups
 ```
 
 Минимальная политика:

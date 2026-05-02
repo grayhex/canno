@@ -64,7 +64,7 @@ docker compose logs -f web
 - настроить бэкапы и мониторинг;
 - проверить восстановление из бэкапа.
 
-Подробная инструкция: **[`DEPLOY.md`](./DEPLOY.md)**.
+Подробная инструкция: **[`docs/DEPLOY.md`](./docs/DEPLOY.md)**.
 
 ---
 
@@ -74,7 +74,7 @@ docker compose logs -f web
 python3 -m unittest -v
 ```
 
-Дополнительные рекомендации и сценарии проверки: `TESTING.md`.
+Дополнительные рекомендации и сценарии проверки: `docs/TESTING.md`.
 
 ---
 
@@ -83,7 +83,7 @@ python3 -m unittest -v
 Создать бэкап:
 
 ```bash
-python3 backup_db.py --db canno.db --out-dir backups
+python3 scripts/backup_db.py --db canno.db --out-dir backups
 ```
 
 Восстановить:

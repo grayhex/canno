@@ -30,7 +30,7 @@ python3 -m unittest -v
 1. Создать свежий backup:
 
 ```bash
-python3 backup_db.py --db canno.db --out-dir backups
+python3 scripts/backup_db.py --db canno.db --out-dir backups
 ```
 
 2. Найти последний файл backup:
