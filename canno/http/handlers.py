@@ -124,7 +124,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.end_headers()
                     self.wfile.write(css.encode())
                     return
-                if p.path == '/logo.png':
+                if p.path in ('/logo.png', '/logo1.png'):
                     logo = BASE_DIR / 'logo1.png'
                     if not logo.exists():
                         self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
@@ -214,7 +214,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
             title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card'><h1>🔐 Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form></main>"))
+            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>🔐 Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form><div class='nav-links nav-inline'><a href='/'>← Назад в главное меню</a></div></main>"))
 
         def handle_login(self, data, role='admin'):
             ip = self.client_ip()
@@ -275,7 +275,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             intro = html_lib.escape(self.get_homepage_intro())
             self.send_html(html(
                 "<main class='card home-card'>"
-                "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>"
+                "<img src='/logo1.png' alt='Логотип Canno Quest' class='home-logo'>"
                 "<h1>Canno Quest</h1>"
                 "<div class='home-login-links'>"
                 "<a href='/admin/login' class='home-login-btn'>🛡️ Вход администратора</a>"

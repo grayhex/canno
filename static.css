@@ -35,6 +35,11 @@ body{
 h1,h2{margin:0 0 10px;line-height:1.1;letter-spacing:-.02em}
 h1{font-size:clamp(2rem,7vw,4.2rem);background:linear-gradient(to bottom,#fff,#f1f1f8 55%,rgba(255,255,255,.72));-webkit-background-clip:text;background-clip:text;color:transparent}
 h2{font-size:clamp(1.2rem,3vw,2.2rem)}
+.auth-title,.admin-card h1{font-size:clamp(1.5rem,3.2vw,2.3rem);line-height:1.2}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.tab-btn{width:auto;padding:8px 12px;margin:0}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
 .card{
   position:relative;
   max-width:900px;
