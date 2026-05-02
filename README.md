@@ -43,6 +43,8 @@ python3 app.py
 
 ```bash
 cp .env.example .env
+# Для Docker SQLite используйте персистентный путь в контейнере:
+# CANNO_DATABASE_URL=sqlite:////data/canno.db
 docker compose up -d --build
 ```
 
@@ -84,7 +86,8 @@ python3 -m unittest -v
 
 ```bash
 python3 scripts/backup_db.py --db canno.db --out-dir backups
-# Если задаете sqlite URL, используйте sqlite://./canno.db (или просто путь canno.db),
+# Для Docker используйте CANNO_DATABASE_URL=sqlite:////data/canno.db.
+# Для локального запуска используйте sqlite://./canno.db (или просто путь canno.db),
 # а не sqlite:///canno.db, чтобы не получить /canno.db в корне ФС.
 ```
 

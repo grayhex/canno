@@ -12,7 +12,7 @@ services:
       CANNO_LOG_LEVEL: ${CANNO_LOG_LEVEL:-INFO}
       CANNO_DB_ENGINE: ${CANNO_DB_ENGINE:-sqlite}
       CANNO_DB_PATH: ${CANNO_DB_PATH:-/data/canno.db}
-      CANNO_DATABASE_URL: ${CANNO_DATABASE_URL:-}
+      CANNO_DATABASE_URL: ${CANNO_DATABASE_URL:-sqlite:////data/canno.db}
     volumes:
       - canno_data:/data
     restart: unless-stopped

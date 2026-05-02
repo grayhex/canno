@@ -23,6 +23,8 @@ class SqliteRepository(BaseRepository):
         parsed = urlparse(self.database_url)
         if parsed.scheme == 'sqlite':
             path = unquote(f'{parsed.netloc}{parsed.path}')
+            if path.startswith('//'):
+                path = path[1:]
             if not path:
                 path = ':memory:'
         else:
