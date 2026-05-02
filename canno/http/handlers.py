@@ -198,9 +198,6 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if p.path == '/admin/quest/save':
                 if not self.require_editor(): return
                 return self.save_quest_settings(data)
-            if p.path == '/admin/settings/save':
-                if not self.require_admin(): return
-                return self.save_admin_settings(data)
             if p.path == '/admin/quest/toggle':
                 if not self.require_editor(): return
                 return self.toggle_quest(data)
@@ -473,11 +470,27 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
 
         def save_admin_settings(self, data):
+            intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
+            title = service.sanitize_text(data.get('homepage_title', [''])[0], 120) or 'Canno Quest'
             enable_english = '1' if data.get('enable_english_content', [''])[-1] in ('on', '1', 'true') else '0'
-            c = repo.connect()
-            c.execute("INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('enable_english_content', enable_english))
-            c.commit(); c.close()
-            self.audit('admin', 'admin.settings.updated', metadata={'enable_english_content': enable_english})
+            c = repo.connect(); cur = c.cursor()
+            try:
+                cur.execute(
+                    "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_intro', intro),
+                )
+                cur.execute(
+                    "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_title', title),
+                )
+                cur.execute(
+                    "INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('enable_english_content', enable_english),
+                )
+                c.commit()
+            finally:
+                c.close()
+            self.audit('admin', 'admin.settings.updated', metadata={'enable_english_content': enable_english, 'homepage_title': title})
             self.send_response(303); self.send_header('Location', '/admin/settings'); self.end_headers()
 
         def save_quest_settings(self, data):
