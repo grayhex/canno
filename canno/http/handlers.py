@@ -271,16 +271,23 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
             return 'Добро пожаловать в Canno Quest! Введите номер вашего квеста, чтобы начать приключение.'
 
+        def get_homepage_title(self):
+            c = repo.connect(); cur = c.cursor()
+            try:
+                row = cur.execute("SELECT value FROM site_settings WHERE key='homepage_title'").fetchone()
+                if row and row['value']:
+                    return row['value']
+            finally:
+                c.close()
+            return 'Canno Quest'
+
         def render_home(self):
             intro = html_lib.escape(self.get_homepage_intro())
+            title = html_lib.escape(self.get_homepage_title())
             self.send_html(html(
                 "<main class='card home-card'>"
                 "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>"
-                "<h1>Canno Quest</h1>"
-                "<div class='home-login-links'>"
-                "<a href='/admin/login' class='home-login-btn'>🛡️ Вход администратора</a>"
-                "<a href='/editor/login' class='home-login-btn'>✍️ Вход редактора</a>"
-                "</div>"
+                f"<h1>{title}</h1>"
                 f"<div class='home-intro'><p>{intro}</p></div>"
                 "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
                 "<div class='quest-enter-row'>"
@@ -293,11 +300,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def save_admin_settings(self, data):
             intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
+            title = service.sanitize_text(data.get('homepage_title', [''])[0], 120) or 'Canno Quest'
             c = repo.connect(); cur = c.cursor()
             try:
                 cur.execute(
                     "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                     ('homepage_intro', intro),
+                )
+                cur.execute(
+                    "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_title', title),
                 )
                 c.commit()
             finally:
@@ -389,7 +401,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><textarea name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            title = html_lib.escape(self.get_homepage_title())
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
