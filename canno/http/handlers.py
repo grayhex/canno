@@ -310,6 +310,17 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             c = repo.connect(); cur = c.cursor()
             try:
                 p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
+                if not p and token.isdigit():
+                    quest_id = service.parse_int(token, minimum=1)
+                    if quest_id:
+                        quest = cur.execute('SELECT id, active FROM quests WHERE id=?', (quest_id,)).fetchone()
+                        if quest:
+                            cur.execute(
+                                "INSERT INTO participants(quest_id, token, started_at, step_started_at, status) VALUES (?,?,?,?,?)",
+                                (quest_id, token, service.now(), service.now(), 'in_progress'),
+                            )
+                            c.commit()
+                            p = cur.execute('SELECT * FROM participants WHERE token=?', (token,)).fetchone()
                 if not p: self.send_html(error_page(404, 'Ссылка недействительна', 'Проверьте URL.'), 404); return
                 q = cur.execute('SELECT * FROM quests WHERE id=?', (p['quest_id'],)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
@@ -374,11 +385,11 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/play/1'>Запустить квест #1</a><a href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a><a href='/admin'>← Назад</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><textarea name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><textarea name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -414,7 +425,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 status = '✅' if q['active'] else '⏸️'
                 row_items.append(
                     f"<tr><td>{q['id']}</td><td>{esc(q['title'])}<br><small class='muted'>share: /play/{q['id']}</small></td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
-                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть</a>"
+                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть</a><a class='link-btn' href='/play/{q['id']}'>Запустить</a>"
                     f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
                 )
             rows = ''.join(row_items)
@@ -424,7 +435,6 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
 <main class='card admin-card'>
   <h1>🧩 Квесты и настройки</h1>
   <p class='muted'>Только интерфейс работы с квестами: создание, редактирование, этапы и пароли.</p>
-  <div class='nav-links nav-inline'><a href='/admin'>← Назад</a></div>
   <h2>{heading}</h2>
   <form method='post' action='/admin/quest/save' class='admin-form'>
     <input type='hidden' name='id' value='{selected_id}'>
