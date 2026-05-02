@@ -58,6 +58,7 @@ class CannoTestCase(unittest.TestCase):
         self.assertEqual(app.parse_int('42', minimum=1), 42)
         self.assertIsNone(app.parse_int('abc', minimum=1))
         self.assertEqual(app.sanitize_text('  hello  ', 5), 'hello')
+        self.assertEqual(app.sanitize_text(None), '')
         iso = app.next_day_start_iso()
         self.assertIn('T00:00:00', iso)
 

@@ -28,7 +28,9 @@ class QuestService:
         return t.isoformat()
 
     def sanitize_text(self, raw, max_len=256):
-        return raw.strip()[:max_len]
+        if raw is None:
+            return ""
+        return str(raw).strip()[:max_len]
 
     def parse_int(self, raw, default=None, minimum=None):
         raw = self.sanitize_text(raw, 32)
