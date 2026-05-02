@@ -135,6 +135,14 @@ class QuestRepository:
                 self._execute(cur, 'CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
             self._execute(cur, 'INSERT INTO app_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING', ('enable_english_content', '0'))
             self._execute(cur, 'INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)', (6, now_iso))
+        if version < 7:
+            if self.repo.placeholder == '?':
+                self._execute(cur, 'ALTER TABLE quests ADD COLUMN access_code TEXT')
+                self._execute(cur, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_quests_access_code ON quests(access_code)')
+            else:
+                self._execute(cur, 'ALTER TABLE quests ADD COLUMN IF NOT EXISTS access_code TEXT')
+                self._execute(cur, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_quests_access_code ON quests(access_code)')
+            self._execute(cur, 'INSERT INTO schema_migrations(version, applied_at) VALUES (?,?)', (7, now_iso))
 
         c.commit(); c.close()
 
