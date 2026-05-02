@@ -1,0 +1,50 @@
+name: Deploy to homelab
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: canno-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Deploy in existing production clone
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd /opt/canno
+
+          echo "Previous deployed commit: $(git rev-parse HEAD)"
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          echo "New deployed commit: $(git rev-parse HEAD)"
+
+          test -f .env
+
+          docker compose build
+          docker compose up -d --remove-orphans
+          docker compose ps
+
+          health_url="http://127.0.0.1:8010/admin/login"
+          deadline=$((SECONDS + 60))
+
+          until curl -fsS "$health_url" > /dev/null; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Healthcheck failed for $health_url"
+              docker compose logs --tail=200 web || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Healthcheck passed for $health_url"
