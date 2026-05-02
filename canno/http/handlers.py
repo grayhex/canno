@@ -107,6 +107,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             try:
                 row = c.execute("SELECT value FROM app_settings WHERE key='enable_english_content'").fetchone()
                 return bool(row and row['value'] == '1')
+            except Exception:
+                return False
             finally:
                 c.close()
 
