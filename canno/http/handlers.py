@@ -248,6 +248,13 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             }
             return hints.get(step_idx, 'Внимательно перечитайте загадку и попробуйте другой вариант.')
 
+        def parse_duration_seconds(self, amount_raw, unit_raw, fallback_raw=''):
+            amount = service.parse_int(amount_raw, minimum=0)
+            if amount is None:
+                return service.parse_int(fallback_raw, minimum=0)
+            unit = service.sanitize_text(unit_raw or 'minutes', 16)
+            return amount * (3600 if unit == 'hours' else 60)
+
         def logout(self):
             sid = self.parse_cookies().get(config.SESSION_COOKIE)
             if sid:
@@ -376,6 +383,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 cur.execute('INSERT INTO attempts(participant_id,step_idx,entered_password,success,created_at) VALUES (?,?,?,?,?)', (p['id'], p['current_step'], cleaned, success, service.now()))
                 if success:
                     auth_store.clear_attempts("step", key)
+                    if step['step_time_limit_sec'] and p['step_started_at']:
+                        deadline = datetime.fromisoformat(p['step_started_at']) + timedelta(seconds=step['step_time_limit_sec'])
+                        if service.now_dt() > deadline:
+                            self.send_html(html(f"<main class='card'><h2>Время этапа вышло</h2><p>Ответ верный, но лимит времени уже истёк. Перезапустите этап и попробуйте снова.</p><a href='/play/{token}'>Вернуться к этапу</a></main>"), 409); return
                     if p['current_step'] >= len(steps):
                         cur.execute("UPDATE participants SET completed=1, status='completed' WHERE id=?", (p['id'],))
                         self.audit('player', 'participant.completion', target=f'participant:{p["id"]}', metadata={'participant_id': p['id'], 'token': token, 'quest_id': p['quest_id']})
@@ -435,7 +446,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 status = '✅' if q['active'] else '⏸️'
                 row_items.append(
                     f"<tr><td>{q['id']}</td><td>{esc(q['title'])}<br><small class='muted'>share: /play/{q['id']}</small></td><td>{status}</td><td>{q['quest_time_limit_sec'] or '-'} сек</td>"
-                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть</a><a class='link-btn' href='/play/{q['id']}'>Запустить</a>"
+                    f"<td><div class='action-group'><a class='link-btn' href='/admin/quest/edit?id={q['id']}'>Открыть для редактирования</a><a class='link-btn' href='/play/{q['id']}'>Запустить для теста</a>"
                     f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
                 )
             rows = ''.join(row_items)
@@ -453,16 +464,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
     <input name='title' placeholder='Название' maxlength='256' required value='{title}'>
     {'<input name=\'title_en\' placeholder=\'Название (EN)\' maxlength=\'256\' value=\''+title_en+'\'>' if show_english else ''}
     <input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'>
-    <input name='quest_time_limit_sec' type='number' min='0' placeholder='Ограничение времени (сек)' value='{time_limit}'>
-    <label><input type='checkbox' name='active' {checked}> Активен</label>
+    <label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><small class='muted'>Оставьте пустым, если лимита нет.</small>
+    
     <button>Сохранить квест</button>
     </section>
   </form>
   <section id='tab-list' class='tab-pane'><h2>Список квестов</h2>
   <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div></section>
   <section id='tab-steps' class='tab-pane'><h2>Этапы квеста</h2>
-  {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек' value='{st['step_time_limit_sec'] or ''}'><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
-  <form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><input name='step_time_limit_sec' type='number' min='0' placeholder='Лимит сек'><button>Добавить этап</button></form>
+  {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
+  <form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Добавить этап</button></form>
 </section></main>
 <script>document.querySelectorAll('.tab-btn').forEach((btn)=>{{btn.addEventListener('click',()=>{{document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-pane').forEach((p)=>p.classList.remove('active'));btn.classList.add('active');document.getElementById(btn.dataset.tab).classList.add('active');}});}});</script>
 """
@@ -498,15 +509,21 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             title = service.sanitize_text(data.get('title', [''])[0], 256)
             title_en = service.sanitize_text(data.get('title_en', [''])[0], 256) if self.is_english_enabled() else ''
             final_location = service.sanitize_text(data.get('final_location', [''])[0], 512)
-            quest_time_limit_sec = service.parse_int(data.get('quest_time_limit_sec', [''])[0], minimum=0)
-            active = 1 if data.get('active', [''])[-1] in ('on', '1', 'true') else 0
+            quest_time_limit_sec = self.parse_duration_seconds(
+                data.get('quest_time_limit_amount', [''])[0],
+                data.get('quest_time_limit_unit', ['minutes'])[0],
+                data.get('quest_time_limit_sec', [''])[0],
+            )
             if not title:
                 self.send_html(error_page(400, 'Некорректные данные', 'Название квеста обязательно'), 400); return
             c = repo.connect(); cur = c.cursor()
             if quest_id:
+                row = cur.execute('SELECT active FROM quests WHERE id=?', (quest_id,)).fetchone()
+                active = row['active'] if row else 0
                 cur.execute('UPDATE quests SET title=?, title_en=?, final_location=?, active=?, quest_time_limit_sec=? WHERE id=?', (title, title_en, final_location, active, quest_time_limit_sec, quest_id))
                 action = 'admin.quest.updated'
             else:
+                active = 0
                 cur.execute('INSERT INTO quests(title,title_en,final_location,active,quest_time_limit_sec) VALUES (?,?,?,?,?)', (title, title_en, final_location, active, quest_time_limit_sec))
                 quest_id = cur.lastrowid
                 action = 'admin.quest.created'
@@ -534,7 +551,11 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             idx = service.parse_int(data.get('idx', [''])[0], minimum=1)
             prompt = service.sanitize_text(data.get('prompt', [''])[0], 2000)
             password = service.sanitize_text(data.get('password', [''])[0], 128)
-            step_time_limit_sec = service.parse_int(data.get('step_time_limit_sec', [''])[0], minimum=0)
+            step_time_limit_sec = self.parse_duration_seconds(
+                data.get('step_time_limit_amount', [''])[0],
+                data.get('step_time_limit_unit', ['minutes'])[0],
+                data.get('step_time_limit_sec', [''])[0],
+            )
             if not quest_id or not idx or not prompt or not password:
                 self.send_html(error_page(400, 'Некорректные данные', 'Заполните обязательные поля этапа'), 400); return
             c = repo.connect(); cur = c.cursor()
