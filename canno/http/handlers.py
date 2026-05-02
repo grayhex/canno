@@ -15,6 +15,7 @@ from canno.templates.html import error_page, html
 
 
 logger = logging.getLogger('canno')
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 def create_handler(repo, service, admin_password_hash_value, auth_store):
@@ -107,14 +108,14 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if p.path == '/':
                     self.render_home(); return
                 if p.path == '/static.css':
-                    css = Path('static.css').read_text(encoding='utf-8')
+                    css = (BASE_DIR / 'static.css').read_text(encoding='utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/css')
                     self.end_headers()
                     self.wfile.write(css.encode())
                     return
                 if p.path == '/logo.png':
-                    logo = Path('logo.png')
+                    logo = BASE_DIR / 'logo.png'
                     if not logo.exists():
                         self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
                     self.send_response(200)
@@ -301,6 +302,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 if not q['active']: self.send_html(html("<main class='card'><h2>Квест временно закрыт</h2><p>Свяжитесь с организатором и попробуйте позже.</p></main>")); return
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
                 locale = service.sanitize_text(parse_qs(urlparse(self.path).query).get('lang', ['ru'])[0], 8)
+                if not steps or not step:
+                    self.send_html(error_page(500, 'Ошибка конфигурации', 'Для квеста не настроены этапы.'), 500); return
                 prompt = step['prompt_en'] if locale == 'en' and step['prompt_en'] else step['prompt']
                 progress = int((p['current_step'] - 1) / len(steps) * 100)
                 remaining_html = ''
@@ -325,6 +328,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.send_html(html("<main class='card'><p>Слишком много попыток. Подождите несколько минут.</p></main>"), 429); return
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (p['quest_id'],)).fetchall()
                 step = next((s for s in steps if s['idx'] == p['current_step']), None)
+                if not steps or not step:
+                    self.send_html(error_page(500, 'Ошибка конфигурации', 'Для квеста не настроены этапы.'), 500); return
                 cleaned = service.sanitize_text(password, 128)
                 success = int(cleaned == step['password'])
                 if step['max_attempts']:
