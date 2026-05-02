@@ -1,369 +1,332 @@
-# Design Style: Linear / Modern
-
-## Design Philosophy
-
-**Core Principles:** Precision, depth, and fluidity define this design system. Every surface exists in three-dimensional space, illuminated by soft ambient light sources that breathe and move. The design communicates "premium developer tools"—fast, responsive, and obsessively crafted like Linear, Vercel, or Raycast. Nothing is arbitrary: every shadow has three layers, every gradient transitions through multiple colors, every animation uses refined expo-out easing. The goal is software that feels expensive without feeling ostentatious.
-
-**Vibe:** Cinematic meets technical minimalism. Imagine a developer's code editor crossed with a Blade Runner interface—deep near-blacks (#050506, never pure black) punctuated by soft pools of indigo light. The aesthetic is sophisticated but never cold, using warmth from accent glows (#5E6AD2 at varying opacities) to create inviting depth. It should feel like looking through frosted glass into a high-end application running at night. Dark, but not oppressive. Technical, but not sterile. Precise, but not rigid.
-
-**Differentiation:** The signature of this style is **layered ambient lighting and interactive depth**. Unlike flat dark modes or simple gradient overlays, this creates genuine atmospheric presence through:
-
-1. **Multi-layer background system:** Four stacked gradients + noise texture + grid overlay create depth without any single dominant element
-2. **Animated gradient blobs:** Large (900-1400px), heavily blurred shapes float slowly across the canvas, simulating cinematic lighting pools
-3. **Mouse-tracking spotlights:** Interactive surfaces respond to cursor position with radial gradient glows (300px diameter, 15% opacity)
-4. **Scroll-linked parallax:** Hero content fades, scales, and translates based on scroll position for cinematic depth
-5. **Multi-layer shadows:** Every elevated surface uses 3-4 shadow layers: border highlight + soft diffuse + ambient darkness + optional accent glow
-6. **Precision micro-interactions:** All animations are 200-300ms with expo-out easing. Movements are tiny (4-8px max). Scale changes are subtle (0.98-1.02). Nothing bounces or overshoots.
+# Design Philosophy: The "Bitcoin DeFi" Aesthetic
 
-**The "Software Feel":** This design should feel like using a desktop application, not a website. Interactions are instant and precise. Hover states are immediate. Focus rings are prominent. Everything responds to the cursor. The aesthetic borrows from native macOS/Windows design systems—subtle transparency, soft glows, refined typography, obsessive attention to 1px details.
-
----
-
-## Design Token System (The DNA)
-
-### Color Strategy: Deep Space with Ambient Light
-
-The palette is built on near-black bases with a single saturated indigo accent. Depth comes from layered translucency and soft light sources, not harsh shadows.
-
-| Token | Value | Usage |
-|:------|:------|:------|
-| `background-deep` | `#020203` | Absolute darkest — footer, deepest layers |
-| `background-base` | `#050506` | Primary page canvas |
-| `background-elevated` | `#0a0a0c` | Elevated surfaces, mock interfaces |
-| `surface` | `rgba(255,255,255,0.05)` | Card backgrounds, containers |
-| `surface-hover` | `rgba(255,255,255,0.08)` | Hovered card state |
-| `foreground` | `#EDEDEF` | Primary text — bright but not pure white |
-| `foreground-muted` | `#8A8F98` | Body text, descriptions, metadata |
-| `foreground-subtle` | `rgba(255,255,255,0.60)` | Tertiary text, placeholders |
-| `accent` | `#5E6AD2` | Primary interactive color — buttons, links, glows |
-| `accent-bright` | `#6872D9` | Hover state for accent |
-| `accent-glow` | `rgba(94,106,210,0.3)` | Glow effects, ambient lighting |
-| `border-default` | `rgba(255,255,255,0.06)` | Subtle hairline borders |
-| `border-hover` | `rgba(255,255,255,0.10)` | Border on hover |
-| `border-accent` | `rgba(94,106,210,0.30)` | Accent-tinted borders for emphasis |
-
-### Background System: Layered Ambient Lighting
-
-The background is never flat. It's a composition of multiple layers:
-
-**Layer 1 — Base Gradient:**
-```
-bg-[radial-gradient(ellipse_at_top,#0a0a0f_0%,#050506_50%,#020203_100%)]
-```
-A radial gradient emanating from top-center creates vertical depth.
-
-**Layer 2 — Noise Texture:**
-A subtle SVG noise pattern at `opacity: 0.015` adds tactile quality and prevents banding.
-
-**Layer 3 — Animated Gradient Blobs:**
-Multiple large, heavily blurred shapes create ambient "light pools":
-- Primary blob: Top-center, `blur-[150px]`, 900×1400px, accent color at 25% opacity
-- Secondary blob: Left side, `blur-[120px]`, 600×800px, purple/pink mix at 15% opacity
-- Tertiary blob: Right side, `blur-[100px]`, 500×700px, indigo/blue mix at 12% opacity
-- Bottom accent: Lower area, pulsing animation, accent at 10% opacity
-
-**Blob Animation:** Blobs float slowly using keyframe animations:
-```css
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-20px) rotate(1deg); }
-}
-/* Duration: 8-10s, ease-in-out, infinite */
-```
-
-**Layer 4 — Grid Overlay:**
-A subtle 64px grid pattern at `opacity: 0.02` adds technical precision.
-
----
-
-### Typography System
-
-**Font Stack:** `"Inter", "Geist Sans", system-ui, sans-serif`
-
-**Type Scale & Weights:**
-
-| Level | Size | Weight | Tracking | Usage |
-|:------|:-----|:-------|:---------|:------|
-| Display | `text-7xl` to `text-8xl` | `font-semibold` | `tracking-[-0.03em]` | Hero headlines |
-| H1 | `text-5xl` to `text-6xl` | `font-semibold` | `tracking-tight` | Section headers |
-| H2 | `text-3xl` to `text-4xl` | `font-semibold` | `tracking-tight` | Subsection headers |
-| H3 | `text-xl` to `text-2xl` | `font-semibold` | `tracking-tight` | Card titles |
-| Body Large | `text-lg` to `text-xl` | `font-normal` | default | Lead paragraphs |
-| Body | `text-sm` to `text-base` | `font-normal` | default | Standard content |
-| Label | `text-xs` | `font-mono` | `tracking-widest` | Section tags, metadata |
-
-**Gradient Text Treatment:**
-Headlines use gradient fills for dimensionality:
-```
-bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-transparent
-```
-
-For accent emphasis, use animated gradient:
-```
-bg-gradient-to-r from-[#5E6AD2] via-indigo-400 to-[#5E6AD2] bg-clip-text text-transparent
-/* With background-size: 200% and animation for shimmer effect */
-```
-
-**Line Heights:**
-- Headlines: `leading-tight` or `leading-none`
-- Body text: `leading-relaxed`
-
----
-
-### Radius & Border System
-
-| Element | Radius | Border |
-|:--------|:-------|:-------|
-| Large containers | `rounded-2xl` (16px) | `border border-white/[0.06]` |
-| Cards | `rounded-2xl` (16px) | `border border-white/[0.06]` |
-| Buttons | `rounded-lg` (8px) | Inset shadow instead of border |
-| Inputs | `rounded-lg` (8px) | `border border-white/10` |
-| Badges/Pills | `rounded-full` | `border border-accent/30` |
-| Icons containers | `rounded-xl` (12px) | `border border-white/10` |
-
-**Border Gradients on Hover:**
-Cards can have animated gradient borders that fade in on hover:
-```css
-background: linear-gradient(to bottom, rgba(94,106,210,0.3), transparent);
-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-mask-composite: exclude;
-padding: 1px;
-```
-
----
-
-### Shadow & Glow System
-
-**Multi-Layer Shadow Formula:**
-Shadows combine multiple layers for realistic depth:
-
-```
-/* Card default */
-shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_2px_20px_rgba(0,0,0,0.4),0_0_40px_rgba(0,0,0,0.2)]
-
-/* Card hover */
-shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_8px_40px_rgba(0,0,0,0.5),0_0_80px_rgba(94,106,210,0.1)]
-```
-
-**Accent Glow for CTAs:**
-```
-shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3),inset_0_1px_0_0_rgba(255,255,255,0.2)]
-```
-
-**Inner Highlight:**
-Buttons and elevated surfaces get a subtle top edge highlight:
-```
-shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]
-```
-
----
-
-## Component Styling Principles
-
-### Buttons
-
-**Primary Button:**
-- Background: Solid accent color (`bg-[#5E6AD2]`)
-- Text: White
-- Shadow: Multi-layer with accent glow
-- Hover: Slightly brighter (`bg-[#6872D9]`), increased glow
-- Active: `scale-[0.98]`, reduced shadow
-- Shine effect: Pseudo-element gradient sweep on hover
-
-**Secondary Button:**
-- Background: `bg-white/[0.05]`
-- Text: `text-[#EDEDEF]`
-- Border: Inset shadow only
-- Hover: `bg-white/[0.08]`, subtle outer glow
-
-**Ghost Button:**
-- Background: Transparent
-- Text: Muted foreground
-- Hover: `bg-white/[0.05]`, text brightens
-
-### Cards & Containers
-
-**Base Card:**
-- Background: `bg-gradient-to-b from-white/[0.08] to-white/[0.02]`
-- Border: 1px at 6% white opacity
-- Radius: `rounded-2xl`
-- Inner glow line: 1px gradient at top edge
-- Mouse-tracking spotlight effect (optional)
-
-**Spotlight Effect:**
-Cards track mouse position and render a radial gradient that follows the cursor:
-```jsx
-// Radial gradient, 300px diameter, accent color at 15% opacity
-// Positioned at mouse coordinates relative to card
-// Opacity transitions on hover
-```
+This style embodies the visual DNA of Bitcoin and decentralized finance—a sophisticated fusion of precision engineering, cryptographic trust, and digital gold. It is **not generic dark mode**; it is a deep cosmic void where data structures glow with the warmth of Bitcoin orange and the brilliance of digital gold.
 
-**Card Variants:**
-- `default`: Standard glass effect
-- `glass`: More translucent with backdrop blur
-- `gradient`: Subtle accent gradient overlay
+## Core Design Principles
 
-### Form Inputs
+1.  **Luminescent Energy**: Light emanates from interactive elements themselves. Bitcoin orange glows, golden highlights shimmer, and data points pulse with life against the true void background. Shadows are colored (orange/gold tints), not just black.
 
-- Background: `bg-[#0F0F12]`
-- Border: `border-white/10`
-- Focus: `border-[#5E6AD2]` with accent glow ring
-- Text: `text-gray-100`
-- Placeholder: `text-gray-500`
+2.  **Mathematical Precision**: Everything follows strict geometric rules. Ultra-thin 1px borders define boundaries, monospace fonts display data with technical accuracy, and grids provide the underlying structure of the blockchain aesthetic.
 
-### Interactive States
+3.  **Layered Depth**: Create three-dimensional space through transparency stacking (glass morphism), colored glow shadows, and backdrop blur effects. Elements float in Z-space without heavy skeuomorphism—it's digital depth, not physical.
 
-**Hover Principles:**
-- Movement is minimal: `y: -4px` to `y: -8px` maximum
-- Duration: `200-300ms`
-- Easing: `[0.16, 1, 0.3, 1]` (expo out)
-- Changes: Border brightens, glow increases, subtle scale
+4.  **Textured Void**: Backgrounds are never flat. Subtle grid patterns (representing blockchain networks), radial gradient blurs (representing energy fields), and noise textures bring the void to life. The darkness breathes.
 
-**Focus States:**
-- Ring: `ring-2 ring-[#5E6AD2]/50 ring-offset-2 ring-offset-[#050506]`
+5.  **Trust Through Design**: High contrast, clear hierarchy, and technical precision communicate security and reliability. The aesthetic says "your assets are safe here."
 
-**Active States:**
-- Scale: `scale-[0.98]`
-- Shadow: Reduced depth
+The vibe is **Secure, Technical, and Valuable**. This is digital gold—it should feel premium, cutting-edge, and engineered to perfection. Think Bitcoin mining rigs humming in the darkness, glowing with orange heat.
 
-**Mobile Menu:**
-- Toggle button appears on screens < 768px
-- Animated dropdown with `opacity` and `y` transform (0.2s duration)
-- Semi-transparent backdrop: `bg-[#050506]/95` with `backdrop-blur-xl`
-- Vertical navigation links with hover states
-- Full-width CTA button at bottom
-- Menu icon transitions between hamburger (`Menu`) and close (`X`) icons
+# Design Token System
 
----
+## Colors (Dark Mode Only)
+This palette uses a "True Void" foundation with "Bitcoin Fire" energy—the warmth of Bitcoin orange and the brilliance of digital gold.
 
-## Layout Principles
+*   **Background**: `#030304` (True Void) - The deepest space where all begins
+*   **Surface**: `#0F1115` (Dark Matter) - Elevated surfaces, cards, and panels
+*   **Foreground**: `#FFFFFF` (Pure Light) - Primary text, maximum contrast
+*   **Muted**: `#94A3B8` (Stardust) - Secondary text, descriptions, metadata
+*   **Border**: `#1E293B` (Dim Boundary) - Subtle borders at rest (often at 10-20% opacity when using white)
+*   **Primary Accent**: `#F7931A` (Bitcoin Orange) - The iconic color of decentralization. Primary CTAs, links, active states, and trust indicators
+*   **Secondary Accent**: `#EA580C` (Burnt Orange) - A deeper, warmer orange for gradients, secondary elements, and visual depth
+*   **Tertiary Accent**: `#FFD600` (Digital Gold) - The color of value. Used in gradients with Bitcoin Orange, highlights, and success states
 
-### Spacing Scale
-Base unit: 4px. Use Tailwind's default scale consistently.
+**Gradient Formula**: The signature look is `linear-gradient(to right, #EA580C, #F7931A)` or `linear-gradient(to right, #F7931A, #FFD600)` for text and buttons.
 
-| Context | Spacing |
-|:--------|:--------|
-| Section padding | `py-24` to `py-32` |
-| Container max-width | `container` with responsive padding |
-| Card padding | `p-6` to `p-8` |
-| Element gaps | `gap-4` to `gap-8` |
-| Between sections | `py-32` (128px) |
+## Typography
+The type system balances technical precision with modern geometric forms.
 
-### Grid Philosophy
+*   **Headings**: `Space Grotesk` (Google Font) - A geometric grotesque with quirky technical character
+    *   Weights: 400 (Regular), 500 (Medium), 600 (Semibold), 700 (Bold)
+    *   Usage: All headings (h1-h6), section titles, card titles
+    *   Apply `font-heading` class
 
-**Asymmetric Bento Grids:**
-Feature grids should NOT be uniform. Use varying spans:
-- 6-column base grid on desktop
-- Mix of `col-span-2`, `col-span-3`, `col-span-4`
-- Variable row heights with `auto-rows-[180px]` as baseline
-- One "hero" card spanning 4 columns and 2 rows
+*   **Body**: `Inter` (Google Font) - Highly legible sans-serif optimized for screens
+    *   Weights: 400 (Regular), 500 (Medium), 600 (Semibold)
+    *   Usage: Body copy, descriptions, buttons
+    *   Apply `font-body` class
 
-**Responsive Breakpoints:**
-- Mobile (`< 768px`): Single column, stacked layout with reduced padding
-- Tablet (`md: 768px`): 2-3 columns, intermediate grid layouts
-- Desktop (`lg: 1024px+`): Full grid expression with asymmetric layouts
+*   **Mono/Data**: `JetBrains Mono` (Google Font) - Technical monospace for precision
+    *   Weights: 400 (Regular), 500 (Medium)
+    *   Usage: Stats, prices, badges, technical labels, navigation links
+    *   Apply `font-mono` class
 
-**Mobile-Specific Adjustments:**
-- Section padding scales: `py-16` (mobile) → `py-24` (tablet) → `py-32` (desktop)
-- Hero typography: `text-4xl` (mobile) → `text-5xl` (tablet) → `text-7xl`/`text-8xl` (desktop)
-- Body text: `text-base` (mobile) → `text-lg` (tablet) → `text-xl` (desktop)
-- Navigation: Hamburger menu with animated slide-down panel on mobile (`Menu`/`X` icons), inline links on desktop
-- Cards: Full-width on mobile, grid on desktop
-- Bento grids: Single column mobile, full asymmetric layout desktop
+*   **Scale Philosophy**: Dramatic contrast between display and body. Heroes are massive (`text-4xl` → `md:text-7xl`), body is comfortable (`text-base` or `text-lg`). Mobile-first scaling prevents overwhelming small screens.
 
-### Section Flow
+*   **Leading & Tracking**: Tight leading on headings (`leading-tight`), relaxed on body (`leading-relaxed`). Uppercase mono text gets generous tracking (`tracking-wider`, `tracking-widest`).
 
-- Sections separated by subtle `border-t border-white/[0.06]`
-- Gradient line accents: `bg-gradient-to-r from-transparent via-white/10 to-transparent`
-- Occasional overlapping sections using negative margins
+## Radius & Borders
+Geometric precision with soft curves for approachability.
 
----
+*   **Radius Tokens**:
+    *   Cards/Containers: `rounded-2xl` (16px) or `rounded-xl` (12px)
+    *   Buttons: `rounded-full` (pill shape)
+    *   Inputs: `rounded-lg` (8px) or bottom-border only for minimalism
+    *   Small elements (badges, icons): `rounded-lg` or `rounded-full`
 
-## The "Bold Factor" (Signature Elements)
+*   **Border Philosophy**: Ultra-thin `1px` borders create delicate boundaries without visual weight
+    *   Default state: `border border-white/10` (barely visible structure)
+    *   Hover state: `border-[#F7931A]/50` (orange accent, 50% opacity)
+    *   Active/Focus: `border-[#F7931A]` (full intensity)
 
-These elements MUST be present for authenticity:
+*   **Special Border Techniques**:
+    *   Corner accents: Small decorative border segments at corners (see How It Works cards)
+    *   Gradient borders: Simulate with inner pseudo-elements or subtle box-shadow gradients
 
-1. **Animated Ambient Blobs:** Multiple layered, floating gradient shapes create cinematic lighting. Without these, the design becomes flat and generic.
+## Shadows & Effects (The Glow)
+The signature of this style is **colored luminescence**—shadows and glows in Bitcoin orange and gold tints.
 
-2. **Mouse-Tracking Spotlights:** Interactive surfaces respond to cursor position with soft radial glow effects. This creates the "magical" interaction feel.
+*   **Orange Glow** (Primary): `shadow-[0_0_20px_-5px_rgba(234,88,12,0.5)]` or `shadow-[0_0_30px_-5px_rgba(247,147,26,0.6)]`
+    *   Used on buttons, cards on hover, primary CTAs, and interactive elements
 
-3. **Gradient Typography:** Headlines use vertical gradients (white to semi-transparent) and accent gradients with animation for key phrases.
+*   **Gold Glow** (Accent): `shadow-[0_0_20px_rgba(255,214,0,0.3)]`
+    *   Used on special highlights, success states, value indicators
 
-4. **Multi-Layer Shadows:** Never single shadows. Always combine: border highlight + soft diffuse shadow + optional accent glow.
+*   **Subtle Card Elevation**: `shadow-[0_0_50px_-10px_rgba(247,147,26,0.1)]`
+    *   Used on product mockups, major sections
+
+*   **Glass Morphism**:
+    *   Formula: `backdrop-blur-lg` + `bg-white/5` or `bg-black/40`
+    *   Creates floating, translucent panels that reveal background blur
+    *   Used on floating cards (hero), testimonials, "How It Works" cards
 
-5. **Parallax/Scroll Effects:** Hero content fades and scales on scroll. Elements reveal with staggered animations. This adds cinematic depth.
+*   **Radial Blur Backgrounds**: Large, soft radial gradients with heavy blur for ambient background glow
+    *   Example: `bg-[#F7931A] opacity-10 blur-[120px]` positioned absolutely
 
-6. **Precision Micro-Interactions:** All animations are quick (200-300ms), use expo-out easing, and movements are tiny (4-8px). Never bouncy or exaggerated.
+## Textures & Patterns
+Backgrounds breathe with subtle, non-distracting patterns that reinforce the blockchain/network theme.
 
----
+*   **Grid Pattern** (Signature):
+    ```css
+    background-size: 50px 50px;
+    background-image:
+      linear-gradient(to right, rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+    mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+    ```
+    *   Creates a fading grid that disappears toward edges (vignette effect)
+    *   Used on hero section
+
+*   **External Texture Overlays**:
+    *   Example: `bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5`
+    *   Very subtle, barely visible patterns for visual interest
+
+*   **Radial Gradient Blurs**: Massive, soft color blobs for ambient lighting
+    *   Position absolutely, use low opacity (5-10%), apply blur-[120px] or blur-[150px]
+    *   Creates depth and guides eye to focal points
+
+# Component Stylings
+
+## Buttons
+Buttons are bold, pill-shaped, and emit colored light. All use `rounded-full` for the signature crypto pill shape.
+
+*   **Primary (Default)**:
+    *   Background: `bg-gradient-to-r from-[#EA580C] to-[#F7931A]`
+    *   Text: White, bold, uppercase with `tracking-wider`
+    *   Shadow: `shadow-[0_0_20px_-5px_rgba(234,88,12,0.5)]`
+    *   Hover: `scale-105` + intensified shadow `shadow-[0_0_30px_-5px_rgba(247,147,26,0.6)]`
+    *   Min height: 44px (touch-friendly)
+
+*   **Outline**:
+    *   Background: Transparent
+    *   Border: `border-2 border-white/20`
+    *   Text: White
+    *   Hover: `border-white` + `bg-white/10`
 
-## Anti-Patterns (What to Avoid)
-
-1. **Flat backgrounds:** Never use a single solid color. Always layer gradients, noise, and ambient light.
-
-2. **Pure black (`#000000`):** Use near-blacks like `#050506` or `#020203` for softer appearance.
-
-3. **Pure white text:** Use `#EDEDEF` or similar off-white to reduce harshness.
-
-4. **Large hover movements:** Keep transforms under 8px. This isn't playful—it's precise.
-
-5. **Uniform grids:** Bento layouts should have variety in card sizes. Avoid same-size-everything.
-
-6. **Harsh borders:** Borders should be nearly invisible (`6-10%` white opacity), not prominent.
-
-7. **Colorful accent overuse:** The accent color is for highlights and interaction, not decoration. Most of the UI is monochromatic.
-
-8. **Bouncy animations:** Use expo-out easing, not spring physics. Movements should be swift and decisive.
-
-9. **Missing glow effects:** Accent buttons without glow look incomplete. The soft light emission is part of the language.
-
----
-
-## Animation & Motion
-
-**Timing:**
-- Quick interactions: `200ms`
-- Standard transitions: `300ms`
-- Entrance animations: `600ms`
-- Background blob float: `8000-10000ms`
-
-**Easing:**
-- Primary: `[0.16, 1, 0.3, 1]` (expo-out)
-- Hover: `ease-out`
-
-**Entrance Patterns:**
-- Fade up: `opacity: 0 → 1`, `y: 24px → 0`
-- Scale in: `opacity: 0 → 1`, `scale: 0.95 → 1`
-- Stagger children: `0.08s` delay between items
-
-**Scroll-Triggered:**
-- Viewport threshold: `15-20%` visibility
-- Once: true (don't re-animate on scroll back)
-
-**Parallax (Hero):**
-- Opacity: Fades from `1 → 0` over first 50% of scroll
-- Scale: Shrinks from `1 → 0.95`
-- Y position: Moves down `0 → 100px`
-
----
-
-## Accessibility Considerations
-
-**Contrast:**
-- Primary text (`#EDEDEF` on `#050506`): ~15:1 ratio ✓
-- Muted text (`#8A8F98` on `#050506`): ~6:1 ratio ✓
-- Accent on dark: Ensure 4.5:1 minimum for interactive elements
-
-**Focus States:**
-- Always visible focus rings using accent color
-- `ring-offset` matches background color
-
-**Motion:**
-- Respect `prefers-reduced-motion`
-- Provide fallbacks for parallax and floating animations
-- Essential interactions should work without animation
-
-**Color Independence:**
-- Don't rely solely on accent color for meaning
-- Use icons, labels, and position to reinforce state
-</design-system>
+*   **Ghost**:
+    *   Background: Transparent, no border
+    *   Text: White
+    *   Hover: `bg-white/10` + `text-[#F7931A]`
+
+*   **Link**:
+    *   Text: `text-[#F7931A]`
+    *   Hover: Underline
+
+All buttons include smooth `transition-all` for responsive micro-interactions.
+
+## Cards (The "Block" Concept)
+Cards are elevated surfaces that float above the void, representing blocks in the chain.
+
+*   **Standard Card**:
+    *   Background: `bg-[#0F1115]` (Dark Matter surface)
+    *   Border: `border border-white/10` (subtle boundary)
+    *   Radius: `rounded-2xl` (16px)
+    *   Padding: `p-8` (generous spacing)
+    *   Hover: `hover:-translate-y-1` (lift) + `hover:border-[#F7931A]/50` + `hover:shadow-[0_0_30px_-10px_rgba(247,147,26,0.2)]`
+    *   Transition: `transition-all duration-300`
+
+*   **Glass Cards** (Floating/Special):
+    *   Background: `bg-black/40` or `bg-white/5`
+    *   Backdrop: `backdrop-blur-sm` or `backdrop-blur-lg`
+    *   Border: `border border-white/10`
+    *   Creates translucent, floating effect
+
+*   **Pricing Cards**:
+    *   Highlighted tier: `scale-105`, `border-[#F7931A]`, elevated z-index, `shadow-[0_0_40px_-10px_rgba(247,147,26,0.15)]`
+    *   Others: Lower opacity (`opacity-80`), scale up on hover
+
+*   **Card Hierarchy**:
+    *   Header: `p-8 pb-4`
+    *   Title: `font-heading font-semibold text-2xl`
+    *   Description: `text-[#94A3B8] text-sm`
+    *   Content: `p-8 pt-0`
+    *   Footer: `p-8 pt-0`
+
+## Inputs
+Minimalist, precise input fields with bottom-border styling for a technical aesthetic.
+
+*   **Background**: `bg-black/50` (semi-transparent dark)
+*   **Border**: Bottom border only - `border-b-2 border-white/20`
+*   **Height**: `h-12` (48px for touch targets)
+*   **Padding**: `px-4 py-2`
+*   **Text**: `text-white text-sm`
+*   **Placeholder**: `placeholder:text-white/30`
+*   **Focus State**:
+    *   Border: `focus-visible:border-[#F7931A]`
+    *   Glow: `focus-visible:shadow-[0_10px_20px_-10px_rgba(247,147,26,0.3)]`
+    *   No outline: `focus-visible:outline-none`
+*   **Disabled**: `disabled:opacity-50 disabled:cursor-not-allowed`
+
+Inputs feel like data entry terminals—clean, precise, and purposeful.
+
+## Icons
+Icons from `lucide-react` reinforce the technical, precise aesthetic.
+
+*   **Stroke Width**: Default (1.5-2px for clean, technical lines)
+*   **Colors**: Use accent colors to create hierarchy
+    *   Orange: `text-[#F7931A]` or `text-[#EA580C]`
+    *   Gold: `text-[#FFD600]`
+    *   Muted: `text-[#94A3B8]`
+    *   White: `text-white`
+
+*   **Icon Containers**: Wrap in colored, glowing containers
+    *   Example: `bg-[#EA580C]/20 border border-[#EA580C]/50 rounded-lg p-3`
+    *   Creates a "holographic node" effect
+    *   Hover: Add glow shadow `hover:shadow-[0_0_20px_rgba(234,88,12,0.4)]`
+
+*   **Decorative Icons**: Large, watermark-style icons in card backgrounds
+    *   High opacity on hover for subtle reveal effect
+    *   Example: `opacity-20 group-hover:opacity-100`
+
+# Non-Generic "Bold" Choices
+
+This design MUST NOT look like default Tailwind. These bold choices create unmistakable personality:
+
+1.  **Gradient Text on Headlines**: Apply `bg-gradient-to-r from-[#F7931A] to-[#FFD600] bg-clip-text text-transparent` to final 1-2 words of hero headlines. Creates instant visual hierarchy and Bitcoin brand association.
+
+2.  **Spinning Orbital Rings**: Hero section features animated 3D-style orb with CSS rotating rings (`animate-[spin_10s_linear_infinite]` and reverse). Floating stat cards bounce around it with staggered delays.
+
+3.  **Corner Border Accents**: "How It Works" cards use decorative corner borders (`border-t border-l` on top-left, `border-r border-b` on bottom-right) in Bitcoin orange, creating a "selected node" effect.
+
+4.  **Glowing Animated Badges**: Pulsing dot badges (`animate-ping`) on trust indicators and status markers. Suggests live network activity.
+
+5.  **Background Icon Watermarks**: Large, rotated, low-opacity icons in feature card backgrounds that reveal on hover (`opacity-20 group-hover:opacity-100`).
+
+6.  **Timeline as Blockchain**: "How It Works" uses a vertical gradient line (orange to transparent) with numbered circular nodes, mimicking a blockchain ledger.
+
+7.  **Asymmetric Pricing Scale**: The popular pricing tier is `scale-105` and elevated, while others are `opacity-80`, creating intentional hierarchy through scale manipulation.
+
+8.  **Glass Morphism with Grid Patterns**: Combine `backdrop-blur` with background grid patterns visible through transparency, creating layered depth.
+
+9.  **Colored Shadows Replace Black**: ALL shadows use orange/gold tints. No pure black shadows exist in this design system.
+
+# Layout & Spacing
+
+*   **Container Width**: `max-w-7xl` (1280px) - Wide and expansive to showcase data and content without cramping
+*   **Section Padding**: Generous vertical `py-24` (96px) creates breathing room between major sections
+*   **Density**: Spacious approach with `gap-8` (32px) or `gap-12` (48px) between grid items
+*   **Section Dividers**: NO hard lines or `<hr>` elements. Sections separate through:
+    *   Vertical spacing (`py-24`)
+    *   Alternating backgrounds (`bg-[#030304]` → `bg-[#0F1115]` → `bg-[#030304]`)
+    *   Subtle top/bottom borders on specific sections (e.g., stats ticker has `border-y`)
+
+*   **Responsive Grids**:
+    *   Mobile-first: Single column by default
+    *   Tablet: `md:grid-cols-2` or `md:grid-cols-3`
+    *   Desktop: Keep `md:grid-cols-3` or `lg:grid-cols-4` for features
+    *   Pricing: Always `md:grid-cols-3` for tier comparison
+
+# Animation & Motion
+
+Motion should feel **precise, snappy, and purposeful**—like a high-performance trading terminal.
+
+*   **Custom Float Animation**:
+    ```css
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-20px); }
+    }
+    .animate-float {
+      animation: float 8s ease-in-out infinite;
+    }
+    ```
+    *   Applied to hero 3D orb graphic
+    *   Slow, smooth, endless float creates ethereal quality
+
+*   **Spinning Orbitals**:
+    *   `animate-[spin_10s_linear_infinite]` for outer ring
+    *   `animate-[spin_15s_linear_infinite_reverse]` for inner ring (reverse direction)
+    *   Creates mesmerizing 3D depth illusion
+
+*   **Bouncing Cards**: Floating stat cards use `animate-bounce` with custom durations (`3s`, `4s`) and delays (`delay-1s`) for staggered motion
+
+*   **Pulsing Indicators**: Status badges use `animate-ping` for "live" feel
+
+*   **Interaction Speed**: Fast and responsive (`duration-200` or `duration-300`)
+    *   Button hover: `transition-all duration-300`
+    *   Card lift: `transition-all duration-300`
+    *   Input focus: Instant (`duration-200`)
+
+*   **Hover Effects**:
+    *   Cards: Lift (`-translate-y-1`), border color shift, glow intensification
+    *   Buttons: Scale (`scale-105`), glow spread
+    *   Images: Scale (`scale-110`), contrast boost (`contrast-125`)
+
+The motion design communicates **speed, precision, and responsiveness**—critical values in crypto/finance.
+
+# Responsive Strategy
+
+The design must maintain its bold personality across all screen sizes while adapting gracefully.
+
+*   **Mobile-First Philosophy**: Start with single-column layouts, scale up for larger screens
+*   **Breakpoints**:
+    *   `sm`: 640px - Minor adjustments
+    *   `md`: 768px - Major layout shifts (2-3 columns activate)
+    *   `lg`: 1024px - Full desktop experience
+    *   `xl`: 1280px - Maximum width container (`max-w-7xl`)
+
+*   **Typography Scaling**: All headings use responsive classes
+    *   Hero: `text-4xl sm:text-5xl md:text-7xl`
+    *   Section Titles: `text-2xl md:text-4xl` or `md:text-5xl`
+    *   Body: `text-base md:text-lg`
+    *   Keep mobile readable, don't overwhelm small screens
+
+*   **Touch Targets**: All interactive elements minimum 44px (`min-w-[44px]`, `h-10+`)
+
+*   **Mobile Adaptations**:
+    *   Navigation: Show only essential CTA on mobile, hide secondary nav
+    *   Hero 3D graphic: Smaller size on mobile (`h-[300px] md:h-[450px]`)
+    *   Grids: Single column → 2-3 columns at `md`
+    *   Pricing cards: Stack vertically, remove scale effect on mobile
+    *   How It Works timeline: Left-aligned on mobile with simpler layout
+
+*   **Maintain Core Aesthetic**: Grid patterns, glows, and gradients persist on mobile—don't strip personality for smaller screens
+
+# Accessibility & Best Practices
+
+*   **Color Contrast**: White text on `#030304` exceeds WCAG AAA (21:1 ratio). Orange `#F7931A` on dark backgrounds meets AA for large text.
+*   **Focus States**: All interactive elements have visible focus rings using `focus-visible:ring-2 focus-visible:ring-[#F7931A]`
+*   **Semantic HTML**: Proper heading hierarchy (h1 → h2 → h3), `<nav>`, `<section>`, `<button>` elements
+*   **Alt Text**: All images require descriptive alt attributes
+*   **Keyboard Navigation**: All interactive elements accessible via Tab, buttons activate on Enter/Space
+*   **Motion Preferences**: Consider `prefers-reduced-motion` for users sensitive to animation (disable float/spin animations)
+
+# Implementation Notes
+
+*   **Font Loading**: Use `fontImport()` helper to load Google Fonts
+*   **Custom Classes**: Define `.font-heading`, `.font-body`, `.font-mono` in style block
+*   **Grid Pattern**: Define `.bg-grid-pattern` with CSS-in-JS in style block
+*   **Glass Morphism**: Define `.holographic-gradient` helper class
+*   **Components**: Build Button, Card, and Input components using `cva` (class-variance-authority) following Shadcn patterns but with Crypto-specific styling
+*   **Icons**: Import specific icons from `lucide-react` as needed (Zap, Lock, Layers, Globe, Check, etc.)
+
+This is not a generic dark theme. This is the **Bitcoin DeFi aesthetic**—engineered for precision, security, and digital value.
