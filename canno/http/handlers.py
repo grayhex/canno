@@ -224,7 +224,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
             title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card auth-card screen-login'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post' class='form-stack'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form><div class='nav-links nav-inline'><a class='btn btn-ghost' href='/'>← Назад в главное меню</a></div></main>"))
+            self.send_html(html(f"<main class='card auth-card screen-login'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post' class='form-stack'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form></main>"))
 
         def handle_login(self, data, role='admin'):
             ip = self.client_ip()
@@ -239,7 +239,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 auth_store.set(sid, service.now_dt() + timedelta(hours=8), role=role)
                 self.audit(role, f'{role}.login.success', target=username, metadata={'session_id': sid}, ip=ip)
                 self.send_response(303)
-                self.send_header('Location', '/admin' if role == 'admin' else '/admin/quest/new')
+                self.send_header('Location', '/admin' if role == 'admin' else '/admin/quest/edit')
                 self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; SameSite=Lax')
                 self.end_headers()
                 return
@@ -486,12 +486,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 status_badge = '<span class="status-badge status-active">Активен</span>' if q['active'] else '<span class="status-badge status-paused">Пауза</span>'
                 row_items.append(
                     f"<tr data-title='{esc(q['title']).lower()}' data-status='{'active' if q['active'] else 'paused'}' data-limit='{q['quest_time_limit_sec'] or 0}' data-id='{q['id']}'>"
-                    f"<td>{q['id']}</td><td><strong>{esc(q['title'])}</strong><br><small class='muted'>{esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{q['quest_time_limit_sec'] or '—'} сек</td>"
+                    f"<td>{q['id']}</td><td><a class='quest-title-link' href='/admin/quest/edit?id={q['id']}'><strong>{esc(q['title'])}</strong></a><button class='icon-action btn btn-ghost inline-copy-link copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать ссылку квеста #{q['id']}' data-path='/play/{q['id']}'><span aria-hidden='true'>🔗</span><span class='sr-only'>Скопировать ссылку квеста #{q['id']}</span></button><br><small class='muted'>{esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{q['quest_time_limit_sec'] or '—'} сек</td>"
                     f"<td><div class='action-icon-group'>"
-                    f"<a class='icon-action btn btn-ghost' title='Редактировать' aria-label='Редактировать квест #{q['id']}' href='/admin/quest/edit?id={q['id']}'><span aria-hidden='true'>✏️</span><span class='sr-only'>Редактировать квест #{q['id']}</span></a>"
-                    f"<a class='icon-action btn btn-ghost' title='Запустить тест' aria-label='Запустить тест квеста #{q['id']}' href='/play/{q['id']}'><span aria-hidden='true'>▶️</span><span class='sr-only'>Запустить тест квеста #{q['id']}</span></a>"
-                    f"<button class='icon-action btn btn-ghost copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать ссылку квеста #{q['id']}' data-path='/play/{q['id']}'><span aria-hidden='true'>🔗</span><span class='sr-only'>Скопировать ссылку квеста #{q['id']}</span></button>"
-                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action btn btn-ghost' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}'><span aria-hidden='true'>{'⏸️' if q['active'] else '✅'}</span><span class='sr-only'>{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}</span></button></form>"
+                                        f"<a class='icon-action btn btn-ghost' title='Запустить тест' aria-label='Запустить тест квеста #{q['id']}' href='/play/{q['id']}'><span aria-hidden='true'>▶️</span><span class='sr-only'>Запустить тест квеста #{q['id']}</span></a>"
+                                        f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action btn btn-ghost' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}'><span aria-hidden='true'>{'⏸️' if q['active'] else '✅'}</span><span class='sr-only'>{'Отключить' if q['active'] else 'Включить'} квест #{q['id']}</span></button></form>"
                     f"</div></td></tr>"
                 )
 
@@ -529,8 +527,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
   </section>
 
   <section class='quest-edit-panel'>
-    <h2>{'Редактирование квеста #' + str(selected_id) if selected_id else 'Выберите квест из таблицы для редактирования'}</h2>
-    {edit_form if selected_id else "<p class='muted'>Создание нового квеста вынесено на отдельную страницу.</p>"}
+    <h2>{'Редактирование квеста #' + str(selected_id) if selected_id else 'Список квестов'}</h2>
+    {edit_form if selected_id else "<a class='link-btn btn btn-ghost new-quest-link' href='/admin/quest/new'>+ Перейти к созданию нового квеста</a>"}
   </section>
 
   {steps_block}
