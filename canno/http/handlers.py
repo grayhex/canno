@@ -152,8 +152,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     token = service.sanitize_text(p.path.split('/play/')[1], 128)
                     self.render_play(token); return
                 if p.path == '/admin/login':
+                    if self.get_user_role() == 'admin':
+                        self.send_response(303); self.send_header('Location', '/admin'); self.end_headers(); return
                     self.render_login(); return
                 if p.path == '/editor/login':
+                    if self.get_user_role() in ('admin', 'editor'):
+                        self.send_response(303); self.send_header('Location', '/admin/quest/edit'); self.end_headers(); return
                     self.render_login('editor'); return
                 if p.path == '/admin/logout':
                     self.logout(); return
@@ -237,7 +241,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 self.audit(role, f'{role}.login.success', target=username, metadata={'session_id': sid}, ip=ip)
                 self.send_response(303)
                 self.send_header('Location', '/admin' if role == 'admin' else '/admin/quest/edit')
-                self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; SameSite=Lax')
+                self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; Max-Age=28800; SameSite=Lax')
                 self.end_headers()
                 return
             self._record_attempt("login", ip)

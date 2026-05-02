@@ -154,3 +154,11 @@ th,td{padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--border
 .top-nav-icon-btn,.top-nav-main #nav-home{width:34px;min-width:34px;padding:0;}
 .inline-copy-link{display:inline-flex;width:28px;min-width:28px;min-height:28px;margin-left:8px;vertical-align:middle;}
 .quest-title-link{font-weight:700;text-decoration:none;}
+
+.admin-settings-card h2{margin:16px 0 6px;padding-top:12px}
+.admin-form-compact{gap:6px}
+.settings-links{margin-bottom:8px}
+.logo-settings-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.checkbox-inline{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--foreground-subtle);white-space:nowrap}
+.checkbox-inline input{width:auto;margin:0}
+@media (max-width:768px){.logo-settings-grid{grid-template-columns:1fr}.checkbox-inline{white-space:normal}}
