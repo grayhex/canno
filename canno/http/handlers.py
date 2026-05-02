@@ -317,9 +317,20 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
             return 'Canno Quest'
 
+        def get_homepage_player_guide(self):
+            c = repo.connect(); cur = c.cursor()
+            try:
+                row = cur.execute("SELECT value FROM site_settings WHERE key='homepage_player_guide'").fetchone()
+                if row and row['value']:
+                    return row['value']
+            finally:
+                c.close()
+            return 'Введите код квеста, полученный у организатора, и проходите этапы по порядку. Пароли вводите без лишних пробелов.'
+
         def render_home(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
+            guide = html_lib.escape(self.get_homepage_player_guide())
             show_logo = self.get_app_setting('homepage_logo_enabled', '1') == '1'
             logo_html = "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>" if show_logo else "<div class='home-logo home-logo-hidden' aria-hidden='true'></div>"
             self.send_html(html(
@@ -329,6 +340,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 "<div class='home-copy'>"
                 f"<h1>{title}</h1>"
                 f"<div class='home-intro'><p>{intro}</p></div>"
+                f"<div class='home-intro'><h2>Инструкция для игрока</h2><p>{guide}</p></div>"
                 "</div>"
                 "<div class='home-actions'>"
                 "<form class='quest-enter-form' aria-label='Вход в квест по номеру' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
@@ -345,6 +357,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def save_admin_settings(self, data):
             intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
             title = service.sanitize_text(data.get('homepage_title', [''])[0], 120) or 'Canno Quest'
+            guide = service.sanitize_text(data.get('homepage_player_guide', [''])[0], 2000)
             c = repo.connect(); cur = c.cursor()
             try:
                 cur.execute(
@@ -354,6 +367,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 cur.execute(
                     "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                     ('homepage_title', title),
+                )
+                cur.execute(
+                    "INSERT INTO site_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_player_guide', guide),
                 )
                 c.commit()
             finally:
@@ -449,9 +466,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
+            guide = html_lib.escape(self.get_homepage_player_guide())
             logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'static/images/logo1.png'))
             logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
-            self.send_html(html(f"<main class='card admin-settings-card screen-admin-settings'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
+            self.send_html(html(f"<main class='card admin-settings-card screen-admin-settings'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание приложения</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><label for='homepage-guide'>Инструкция для игрока</label><textarea id='homepage-guide' name='homepage_player_guide' rows='4' maxlength='2000'>{guide}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -463,17 +481,23 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_quest_form(self, quest_id=None):
             self.audit('admin', 'admin.quest.form.view', target=f'quest:{quest_id or "new"}', metadata={'quest_id': quest_id})
             c = repo.connect(); cur = c.cursor()
-            uncoded = cur.execute('SELECT id FROM quests WHERE access_code IS NULL OR access_code=""').fetchall()
-            for qrow in uncoded:
-                cur.execute('UPDATE quests SET access_code=? WHERE id=?', (self.generate_quest_code(cur), qrow['id']))
-            if uncoded:
-                c.commit()
-            quests = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec, access_code FROM quests ORDER BY id DESC').fetchall()
+            quest_columns = {row['name'] for row in cur.execute("PRAGMA table_info(quests)").fetchall()}
+            has_title_en = 'title_en' in quest_columns
+            has_access_code = 'access_code' in quest_columns
+            if has_access_code:
+                uncoded = cur.execute('SELECT id FROM quests WHERE access_code IS NULL OR access_code=""').fetchall()
+                for qrow in uncoded:
+                    cur.execute('UPDATE quests SET access_code=? WHERE id=?', (self.generate_quest_code(cur), qrow['id']))
+                if uncoded:
+                    c.commit()
+            title_en_select = 'title_en' if has_title_en else "'' AS title_en"
+            access_code_select = 'access_code' if has_access_code else "'' AS access_code"
+            quests = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, quest_time_limit_sec, {access_code_select} FROM quests ORDER BY id DESC').fetchall()
             show_english = self.is_english_enabled()
             selected = None
             steps = []
             if quest_id:
-                selected = cur.execute('SELECT id, title, title_en, final_location, active, quest_time_limit_sec, access_code FROM quests WHERE id=?', (quest_id,)).fetchone()
+                selected = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, quest_time_limit_sec, {access_code_select} FROM quests WHERE id=?', (quest_id,)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
             c.close()
 
