@@ -98,7 +98,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             if self.get_user_role() in ('admin', 'editor'):
                 return True
             self.send_response(303)
-            self.send_header('Location', '/editor/login')
+            self.send_header('Location', '/admin/login')
             self.end_headers()
             return False
 
@@ -155,10 +155,6 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     if self.get_user_role() == 'admin':
                         self.send_response(303); self.send_header('Location', '/admin'); self.end_headers(); return
                     self.render_login(); return
-                if p.path == '/editor/login':
-                    if self.get_user_role() in ('admin', 'editor'):
-                        self.send_response(303); self.send_header('Location', '/admin/quest/edit'); self.end_headers(); return
-                    self.render_login('editor'); return
                 if p.path == '/admin/logout':
                     self.logout(); return
                 if p.path == '/admin':
@@ -204,12 +200,13 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             raw_body = self.rfile.read(length).decode(errors='ignore')
             data = parse_qs(raw_body)
             if p.path == '/admin/login':
-                return self.handle_login(data, 'admin')
-            if p.path == '/editor/login':
-                return self.handle_login(data, 'editor')
+                return self.handle_login(data)
             if p.path == '/admin/quests/import':
                 if not self.require_admin(): return
                 return self.import_quest_json(data)
+            if p.path == '/admin/editors/save':
+                if not self.require_admin(): return
+                return self.save_editor_account(data)
             if p.path == '/admin/settings/save':
                 if not self.require_admin(): return
                 return self.save_admin_settings(data)
@@ -223,31 +220,47 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 return self.submit_password(service.sanitize_text(p.path.split('/play/')[1], 128), data.get('password', [''])[0])
             self.send_json({'error': 'not found'}, 404)
 
-        def render_login(self, role='admin', error=''):
+        def render_login(self, error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
-            title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card auth-card screen-login'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post' class='form-stack'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form></main>"))
+            self.send_html(html(f"<main class='card auth-card screen-login'><h1 class='auth-title'>Вход в панель управления</h1>{err}<form method='post' class='form-stack'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form></main>"))
 
-        def handle_login(self, data, role='admin'):
+        def resolve_user(self, username):
+            if username == config.ADMIN_USER:
+                return {'role': 'admin', 'username': config.ADMIN_USER, 'password_hash': admin_password_hash_value}
+            c = repo.connect()
+            try:
+                row = c.execute('SELECT username, password_hash FROM editor_accounts WHERE username=? AND is_active=1', (username,)).fetchone()
+                if row:
+                    return {'role': 'editor', 'username': row['username'], 'password_hash': row['password_hash']}
+            finally:
+                c.close()
+            if username == config.EDITOR_USER:
+                return {
+                    'role': 'editor',
+                    'username': config.EDITOR_USER,
+                    'password_hash': service.resolve_password_hash(config.EDITOR_PASSWORD_HASH, config.EDITOR_PASSWORD),
+                }
+            return None
+
+        def handle_login(self, data):
             ip = self.client_ip()
             if self._blocked("login", ip, config.MAX_LOGIN_ATTEMPTS, config.LOGIN_WINDOW_SECONDS):
-                self.render_login(role, 'Слишком много попыток. Повторите позже.'); return
+                self.render_login('Слишком много попыток. Повторите позже.'); return
             username = service.sanitize_text(data.get('username', [''])[0], 64)
             password = service.sanitize_text(data.get('password', [''])[0], 256)
-            expected_user = config.ADMIN_USER if role == 'admin' else config.EDITOR_USER
-            expected_hash = admin_password_hash_value if role == 'admin' else service.resolve_password_hash(config.EDITOR_PASSWORD_HASH, config.EDITOR_PASSWORD)
-            if username == expected_user and service.verify_password(password, expected_hash):
+            user = self.resolve_user(username)
+            if user and service.verify_password(password, user['password_hash']):
                 sid = secrets.token_urlsafe(32)
-                auth_store.set(sid, service.now_dt() + timedelta(hours=8), role=role)
-                self.audit(role, f'{role}.login.success', target=username, metadata={'session_id': sid}, ip=ip)
+                auth_store.set(sid, service.now_dt() + timedelta(hours=8), role=user['role'])
+                self.audit(user['role'], f"{user['role']}.login.success", target=username, metadata={'session_id': sid}, ip=ip)
                 self.send_response(303)
-                self.send_header('Location', '/admin' if role == 'admin' else '/admin/quest/edit')
+                self.send_header('Location', '/admin' if user['role'] == 'admin' else '/admin/quest/edit')
                 self.send_header('Set-Cookie', f'{config.SESSION_COOKIE}={sid}; HttpOnly; Path=/; Max-Age=28800; SameSite=Lax')
                 self.end_headers()
                 return
             self._record_attempt("login", ip)
-            self.audit(role, f'{role}.login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
-            self.render_login(role, 'Неверный логин или пароль.')
+            self.audit('auth', 'login.failed', target=username, metadata={'reason': 'invalid_credentials'}, ip=ip)
+            self.render_login('Неверный логин или пароль.')
 
         def format_seconds(self, total_seconds):
             secs = max(0, int(total_seconds))
@@ -470,7 +483,17 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             guide = html_lib.escape(self.get_homepage_player_guide())
             logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'static/images/logo1.png'))
             logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
-            self.send_html(html(f"<main class='card admin-settings-card screen-admin-settings'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание приложения</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><label for='homepage-guide'>Инструкция для игрока</label><textarea id='homepage-guide' name='homepage_player_guide' rows='4' maxlength='2000'>{guide}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
+            editors_html = self.render_editor_accounts()
+            self.send_html(html(f"<main class='card admin-settings-card screen-admin-settings'><h1>🛠️ Техническая админка</h1><nav class='settings-tabs'><a class='btn btn-ghost' href='#tab-general'>Общие настройки</a><a class='btn btn-ghost' href='#tab-editors'>Редакторы</a><a class='btn btn-ghost' href='#tab-ui'>Интерфейс и текст</a></nav><section id='tab-general'><h2>Общие настройки</h2><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></section><section id='tab-editors'><h2>Список редакторов</h2>{editors_html}</section><section id='tab-ui'><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание приложения</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><label for='homepage-guide'>Инструкция для игрока</label><textarea id='homepage-guide' name='homepage_player_guide' rows='4' maxlength='2000'>{guide}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form></section></main>"))
+
+        def render_editor_accounts(self):
+            c = repo.connect()
+            try:
+                rows = c.execute('SELECT id, username, is_active FROM editor_accounts ORDER BY username').fetchall()
+            finally:
+                c.close()
+            items = ''.join([f"<tr><td>{r['id']}</td><td>{html_lib.escape(r['username'])}</td><td>{'Активен' if r['is_active'] else 'Отключен'}</td></tr>" for r in rows])
+            return f"<div class='table-wrap'><table><tr><th>ID</th><th>Логин</th><th>Статус</th></tr>{items}</table></div><form method='post' action='/admin/editors/save' class='admin-form'><label>Логин редактора</label><input name='editor_username' maxlength='64' required><label>Пароль редактора</label><input type='password' name='editor_password' maxlength='256' required><button class='btn'>Создать / обновить</button></form>"
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -627,6 +650,24 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
             self.audit('admin', 'admin.settings.updated', metadata={'enable_english_content': enable_english, 'homepage_title': title})
             self.send_response(303); self.send_header('Location', '/admin/settings'); self.end_headers()
+
+        def save_editor_account(self, data):
+            username = service.sanitize_text(data.get('editor_username', [''])[0], 64)
+            password = service.sanitize_text(data.get('editor_password', [''])[0], 256)
+            if not username or not password:
+                self.send_html(error_page(400, 'Некорректные данные', 'Логин и пароль редактора обязательны.'), 400); return
+            password_hash = service.hash_password(password)
+            c = repo.connect(); cur = c.cursor()
+            try:
+                cur.execute(
+                    "INSERT INTO editor_accounts(username, password_hash, is_active) VALUES(?,?,1) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, is_active=1",
+                    (username, password_hash),
+                )
+                c.commit()
+            finally:
+                c.close()
+            self.audit('admin', 'admin.editor_account.saved', target=username, metadata={'username': username})
+            self.send_response(303); self.send_header('Location', '/admin/settings#tab-editors'); self.end_headers()
 
         def save_quest_settings(self, data):
             quest_id = service.parse_int(data.get('id', [''])[0], minimum=1)

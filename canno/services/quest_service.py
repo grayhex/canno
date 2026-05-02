@@ -52,6 +52,13 @@ class QuestService:
         digest = hashlib.pbkdf2_hmac('sha256', config.ADMIN_PASSWORD.encode(), salt.encode(), 200_000).hex()
         return f'pbkdf2_sha256$200000${salt}${digest}'
 
+    def resolve_password_hash(self, password_hash, raw_password):
+        if password_hash:
+            return password_hash
+        if not raw_password:
+            return ''
+        return self.hash_password(raw_password)
+
     def verify_password(self, raw_password, stored_hash):
         try:
             algo, iterations, salt, digest = stored_hash.split('$', 3)
@@ -62,6 +69,11 @@ class QuestService:
         except Exception:
             logger.error('Invalid password hash format')
             return False
+
+    def hash_password(self, raw_password):
+        salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac('sha256', raw_password.encode(), salt.encode(), 200_000).hex()
+        return f'pbkdf2_sha256$200000${salt}${digest}'
 
     def blocked(self, storage, key, max_attempts, window_seconds):
         attempts = storage.get(key, [])
