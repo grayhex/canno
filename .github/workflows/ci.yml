@@ -69,7 +69,7 @@ jobs:
           repo = QuestRepository(create_repository("sqlite:///ci_backup_test.db"))
           repo.apply_migrations(datetime.now(timezone.utc).isoformat())
           PY
-          python backup_db.py --db ci_backup_test.db --out-dir backups
+          python scripts/backup_db.py --db ci_backup_test.db --out-dir backups
       - name: Validate backup integrity and schema baseline
         run: |
           python - <<'PY'
