@@ -25,7 +25,7 @@
 - `canno/services/quest_service.py` — бизнес-логика и валидация данных.
 - `canno/services/stores.py` — сессии и хранилище попыток для rate-limit.
 - `canno/repositories/db.py` — репозиторий и миграции БД (SQLite/PostgreSQL).
-- `canno/templates/html.py` и `static.css` — UI-шаблон и стили.
+- `canno/templates/html.py` и `static/` — UI-шаблон, стили и графические ассеты.
 
 ---
 
@@ -54,7 +54,7 @@ export CANNO_HTTP_PORT=8000
 ## 🧪 Тесты
 
 ```bash
-python3 -m unittest -v
+python3 -m unittest discover -s tests -v
 ```
 
 Дополнительные сценарии: `docs/TESTING.md`.

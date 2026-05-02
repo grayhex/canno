@@ -127,15 +127,15 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 p = urlparse(self.path)
                 if p.path == '/':
                     self.render_home(); return
-                if p.path == '/static.css':
-                    css = (BASE_DIR / 'static.css').read_text(encoding='utf-8')
+                if p.path in ('/static.css', '/static/style.css'):
+                    css = (BASE_DIR / 'static' / 'style.css').read_text(encoding='utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/css')
                     self.end_headers()
                     self.wfile.write(css.encode())
                     return
-                if p.path in ('/logo.png', '/logo1.png'):
-                    logo_rel_path = self.get_app_setting('homepage_logo_path', 'logo1.png') or 'logo1.png'
+                if p.path in ('/logo.png', '/logo1.png', '/static/images/logo1.png'):
+                    logo_rel_path = self.get_app_setting('homepage_logo_path', 'static/images/logo1.png') or 'static/images/logo1.png'
                     logo = (BASE_DIR / logo_rel_path).resolve()
                     try:
                         logo.relative_to(BASE_DIR.resolve())
@@ -425,9 +425,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
-            logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'logo1.png'))
+            logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'static/images/logo1.png'))
             logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -555,7 +555,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
             title = service.sanitize_text(data.get('homepage_title', [''])[0], 120) or 'Canno Quest'
             enable_english = '1' if data.get('enable_english_content', [''])[-1] in ('on', '1', 'true') else '0'
-            logo_path = service.sanitize_text(data.get('homepage_logo_path', ['logo1.png'])[0], 512) or 'logo1.png'
+            logo_path = service.sanitize_text(data.get('homepage_logo_path', ['static/images/logo1.png'])[0], 512) or 'static/images/logo1.png'
             logo_enabled = '1' if data.get('homepage_logo_enabled', [''])[-1] in ('on', '1', 'true') else '0'
             c = repo.connect(); cur = c.cursor()
             try:

@@ -9,7 +9,7 @@
 ## Как запустить
 
 ```bash
-python3 -m unittest -v
+python3 -m unittest discover -s tests -v
 ```
 
 ## Цель
