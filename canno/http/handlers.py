@@ -224,7 +224,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_login(self, role='admin', error=''):
             err = f"<p class='error'>{html_lib.escape(error)}</p>" if error else ''
             title = 'админку' if role == 'admin' else 'панель редактора'
-            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button>Войти</button></form><div class='nav-links nav-inline'><a href='/'>← Назад в главное меню</a></div></main>"))
+            self.send_html(html(f"<main class='card auth-card'><h1 class='auth-title'>Вход в {title}</h1>{err}<form method='post'><input name='username' placeholder='Логин' maxlength='64' required><input type='password' name='password' maxlength='256' placeholder='Пароль' required><button class='btn'>Войти</button></form><div class='nav-links nav-inline'><a class='btn btn-ghost' href='/'>← Назад в главное меню</a></div></main>"))
 
         def handle_login(self, data, role='admin'):
             ip = self.client_ip()
@@ -311,7 +311,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
                 "<div class='quest-enter-row'>"
                 "<input id='quest-token' name='token' placeholder='Номер квеста' maxlength='128' required>"
-                "<button class='quest-enter-btn'>Войти</button>"
+                "<button class='quest-enter-btn btn'>Войти</button>"
                 "</div>"
                 "</form>"
                 "</main>"
@@ -370,7 +370,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     remaining = (deadline - service.now_dt()).total_seconds()
                     remaining_html = f"<div class='timer-wrap'><p class='muted'>Осталось времени на этап</p><p id='step-timer' class='timer' data-remaining='{int(remaining)}' data-warning='120'>{self.format_seconds(remaining)}</p><p id='step-warning' class='warning hidden'>Мало времени — попробуйте самый очевидный вариант ответа.</p></div>"
                 title = q['title_en'] if locale == 'en' and q['title_en'] else q['title']
-                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button>Проверить ответ</button></form><p class='muted'>💡 Совет: ответ без лишних пробелов и символов.</p></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
+                self.send_html(html(f"""<main class='card'><h1>{html_lib.escape(title)}</h1><div class='bar'><span style='width:{progress}%'></span></div><p class='muted'>Этап {p['current_step']} из {len(steps)}</p>{remaining_html}<p class='prompt'>{html_lib.escape(prompt)}</p><form method='post'><input name='password' placeholder='Введите пароль' maxlength='128' autocomplete='off' required><button class='btn'>Проверить ответ</button></form><p class='muted'>💡 Совет: ответ без лишних пробелов и символов.</p></main><script>const timer=document.getElementById('step-timer');if(timer){{let remaining=Number(timer.dataset.remaining||0);const warningAt=Number(timer.dataset.warning||120);const warning=document.getElementById('step-warning');const fmt=(n)=>{{const s=Math.max(0,Math.floor(n));const m=String(Math.floor(s/60)).padStart(2,'0');const sec=String(s%60).padStart(2,'0');return m+':'+sec;}};const tick=()=>{{timer.textContent=fmt(remaining);if(remaining<=warningAt&&warning){{warning.classList.remove('hidden');timer.classList.add('timer-danger');}}if(remaining<=0){{clearInterval(iv);}}remaining-=1;}};tick();const iv=setInterval(tick,1000);}}</script>"""))
             finally:
                 c.close()
 
@@ -420,14 +420,14 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 c.close()
 
         def render_admin(self):
-            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a href='/admin/quest/new'>Редактор квестов</a><a href='/admin/settings'>Технические настройки</a><a href='/play/1'>Запустить квест #1</a><a href='/admin/logout'>Выйти</a></div></main>"))
+            self.send_html(html("<main class='card'><h1>⚙️ Админка</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quest/new'>Редактор квестов</a><a class='btn btn-ghost' href='/admin/settings'>Технические настройки</a><a class='btn btn-ghost' href='/play/1'>Запустить квест #1</a><a class='btn btn-ghost' href='/admin/logout'>Выйти</a></div></main>"))
 
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
             logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'static/images/logo1.png'))
             logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a class='btn btn-ghost' href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a class='btn btn-ghost' href='/admin/audit'>Журнал аудита</a><a class='btn btn-ghost' href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='static/images/logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button class='btn'>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary btn-outline'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -448,9 +448,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
     <input name='final_location' placeholder='Финальная локация' maxlength='512'>
     <label for='quest-time-amount-new'>Лимит на весь квест</label>
     <div class='inline-time'><input id='quest-time-amount-new' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div>
-    <button>Создать квест</button>
+    <button class='btn'>Создать квест</button>
   </form>
-  <a class='link-btn' href='/admin/quest/edit'>← Вернуться к таблице квестов</a>
+  <a class='link-btn btn btn-ghost' href='/admin/quest/edit'>← Вернуться к таблице квестов</a>
 </main>
 """
             self.send_html(html(page))
@@ -482,10 +482,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     f"<tr data-title='{esc(q['title']).lower()}' data-status='{'active' if q['active'] else 'paused'}' data-limit='{q['quest_time_limit_sec'] or 0}' data-id='{q['id']}'>"
                     f"<td>{q['id']}</td><td><strong>{esc(q['title'])}</strong><br><small class='muted'>{esc(q['final_location']) or '—'}</small></td><td>{status_badge}</td><td>{q['quest_time_limit_sec'] or '—'} сек</td>"
                     f"<td><div class='action-icon-group'>"
-                    f"<a class='icon-action' title='Редактировать' aria-label='Редактировать' href='/admin/quest/edit?id={q['id']}'>✏️</a>"
-                    f"<a class='icon-action' title='Запустить тест' aria-label='Запустить тест' href='/play/{q['id']}'>▶️</a>"
-                    f"<button class='icon-action copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать URL квеста' data-path='/play/{q['id']}'>🔗</button>"
-                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'}'>{'⏸️' if q['active'] else '✅'}</button></form>"
+                    f"<a class='icon-action btn btn-ghost' title='Редактировать' aria-label='Редактировать' href='/admin/quest/edit?id={q['id']}'>✏️</a>"
+                    f"<a class='icon-action btn btn-ghost' title='Запустить тест' aria-label='Запустить тест' href='/play/{q['id']}'>▶️</a>"
+                    f"<button class='icon-action btn btn-ghost copy-link-btn' type='button' title='Скопировать URL квеста' aria-label='Скопировать URL квеста' data-path='/play/{q['id']}'>🔗</button>"
+                    f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='icon-action btn btn-ghost' title='{'Отключить' if q['active'] else 'Включить'}' aria-label='{'Отключить' if q['active'] else 'Включить'}'>{'⏸️' if q['active'] else '✅'}</button></form>"
                     f"</div></td></tr>"
                 )
 
@@ -494,9 +494,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             steps_block = ''
             if selected_id:
                 title_en_input = f"<input name='title_en' placeholder='Название (EN)' maxlength='256' value='{title_en}'>" if show_english else ''
-                edit_form = f"<form method='post' action='/admin/quest/save' class='admin-form'><input type='hidden' name='id' value='{selected_id}'><input name='title' placeholder='Название' maxlength='256' required value='{title}'>{title_en_input}<input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'><label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Сохранить квест</button></form>"
-                step_forms = ''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])
-                steps_block = f"<section class='tab-pane active'><h2>Этапы квеста</h2>{step_forms}<form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Добавить этап</button></form></section>"
+                edit_form = f"<form method='post' action='/admin/quest/save' class='admin-form'><input type='hidden' name='id' value='{selected_id}'><input name='title' placeholder='Название' maxlength='256' required value='{title}'>{title_en_input}<input name='final_location' placeholder='Финальная локация' maxlength='512' value='{final_location}'><label for='quest-time-amount'>Лимит на весь квест</label><div class='inline-time'><input id='quest-time-amount' class='time-input' name='quest_time_limit_amount' type='number' min='0' placeholder='30'><select name='quest_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn'>Сохранить квест</button></form>"
+                step_forms = ''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary btn-outline'>Сохранить этап #{st['idx']}</button></form>" for st in steps])
+                steps_block = f"<section class='tab-pane active'><h2>Этапы квеста</h2>{step_forms}<form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn'>Добавить этап</button></form></section>"
 
             page = f"""
 <main class='card admin-card'>
@@ -517,7 +517,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         <option value='title_asc'>По названию А-Я</option>
         <option value='title_desc'>По названию Я-А</option>
       </select>
-      <a class='link-btn new-quest-link' href='/admin/quest/new'>+ Добавить новый</a>
+      <a class='link-btn btn btn-ghost new-quest-link' href='/admin/quest/new'>+ Добавить новый</a>
     </div>
     <div class='table-wrap'><table id='quest-table'><tr><th>ID</th><th>Квест</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div>
   </section>
@@ -713,7 +713,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 for r in rows
             )
             export_link = f"/admin/audit/export.csv?action={action}&quest_id={quest_id or ''}&from={date_from}&to={date_to}"
-            self.send_html(html(f"<main class='card'><h1>Аудит</h1><form><input name='from' placeholder='from ISO' value='{html_lib.escape(date_from)}'><input name='to' placeholder='to ISO' value='{html_lib.escape(date_to)}'><input name='action' placeholder='action' value='{html_lib.escape(action)}'><input name='quest_id' placeholder='quest_id' value='{quest_id or ''}'><button>Фильтр</button></form><p><a href='{html_lib.escape(export_link)}'>Экспорт CSV</a></p><table><tr><th>Время</th><th>Actor</th><th>Action</th><th>Target</th><th>Metadata</th><th>IP</th></tr>{items}</table></main>"))
+            self.send_html(html(f"<main class='card'><h1>Аудит</h1><form><input name='from' placeholder='from ISO' value='{html_lib.escape(date_from)}'><input name='to' placeholder='to ISO' value='{html_lib.escape(date_to)}'><input name='action' placeholder='action' value='{html_lib.escape(action)}'><input name='quest_id' placeholder='quest_id' value='{quest_id or ''}'><button class='btn'>Фильтр</button></form><p><a href='{html_lib.escape(export_link)}'>Экспорт CSV</a></p><table><tr><th>Время</th><th>Actor</th><th>Action</th><th>Target</th><th>Metadata</th><th>IP</th></tr>{items}</table></main>"))
 
         def export_audit_csv(self, query):
             params = parse_qs(query)
