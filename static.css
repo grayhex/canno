@@ -84,3 +84,12 @@ button{border:none;cursor:pointer;font-weight:600;color:#fff;background:#5E6AD2;
   .quest-enter-row input{animation:none}
   .quest-enter-btn{animation:none}
 }
+.quest-list-toolbar{display:grid;grid-template-columns:1.4fr .9fr .9fr auto;gap:10px;align-items:center;margin-bottom:12px}
+.new-quest-link{white-space:nowrap;text-align:center}
+.status-badge{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border-default)}
+.status-active{background:rgba(67,180,120,.12);color:#7be3a8;border-color:rgba(67,180,120,.35)}
+.status-paused{background:rgba(255,184,77,.1);color:#ffd08a;border-color:rgba(255,184,77,.35)}
+.action-icon-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.icon-action{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--border-default);background:rgba(255,255,255,.05);text-decoration:none;cursor:pointer;padding:0;margin:0;color:var(--foreground)}
+.icon-action:hover{background:var(--surface-hover);border-color:var(--border-hover)}
+@media (max-width:768px){.quest-list-toolbar{grid-template-columns:1fr}.new-quest-link{width:100%}}
