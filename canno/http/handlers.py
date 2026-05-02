@@ -193,9 +193,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     if not self.require_admin(): return
                     self.archive_completed_runs(); return
                 self.send_html(error_page(404, 'Не найдено', 'Страница не существует.'), 404)
-            except Exception:
-                logger.exception('Unhandled GET error')
-                self.send_html(error_page(500, 'Ошибка сервера', 'Попробуйте снова позже.'), 500)
+            except Exception as exc:
+                logger.exception('Unhandled GET error on path %s', self.path)
+                debug_hint = f"Техническая информация: {type(exc).__name__}: {html_lib.escape(str(exc))}"
+                self.send_html(error_page(500, 'Ошибка сервера', f'Попробуйте снова позже. {debug_hint}'), 500)
 
         def do_POST(self):
             p = urlparse(self.path)
@@ -484,6 +485,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             quest_columns = {row['name'] for row in cur.execute("PRAGMA table_info(quests)").fetchall()}
             has_title_en = 'title_en' in quest_columns
             has_access_code = 'access_code' in quest_columns
+            has_quest_time_limit = 'quest_time_limit_sec' in quest_columns
             if has_access_code:
                 uncoded = cur.execute('SELECT id FROM quests WHERE access_code IS NULL OR access_code=""').fetchall()
                 for qrow in uncoded:
@@ -492,12 +494,13 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     c.commit()
             title_en_select = 'title_en' if has_title_en else "'' AS title_en"
             access_code_select = 'access_code' if has_access_code else "'' AS access_code"
-            quests = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, quest_time_limit_sec, {access_code_select} FROM quests ORDER BY id DESC').fetchall()
+            quest_time_limit_select = 'quest_time_limit_sec' if has_quest_time_limit else '0 AS quest_time_limit_sec'
+            quests = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, {quest_time_limit_select}, {access_code_select} FROM quests ORDER BY id DESC').fetchall()
             show_english = self.is_english_enabled()
             selected = None
             steps = []
             if quest_id:
-                selected = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, quest_time_limit_sec, {access_code_select} FROM quests WHERE id=?', (quest_id,)).fetchone()
+                selected = cur.execute(f'SELECT id, title, {title_en_select}, final_location, active, {quest_time_limit_select}, {access_code_select} FROM quests WHERE id=?', (quest_id,)).fetchone()
                 steps = cur.execute('SELECT * FROM steps WHERE quest_id=? ORDER BY idx', (quest_id,)).fetchall()
             c.close()
 
