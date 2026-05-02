@@ -275,7 +275,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             intro = html_lib.escape(self.get_homepage_intro())
             self.send_html(html(
                 "<main class='card home-card'>"
-                "<img src='/logo1.png' alt='Логотип Canno Quest' class='home-logo'>"
+                "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>"
                 "<h1>Canno Quest</h1>"
                 "<div class='home-login-links'>"
                 "<a href='/admin/login' class='home-login-btn'>🛡️ Вход администратора</a>"

@@ -44,12 +44,33 @@ class CannoTestCase(unittest.TestCase):
         conn.close()
         return status, hdrs, data
 
+    def request_bytes(self, method, path, body=None, headers=None, port=None):
+        conn = HTTPConnection('127.0.0.1', port or self.port, timeout=5)
+        conn.request(method, path, body=body, headers=headers or {})
+        resp = conn.getresponse()
+        data = resp.read()
+        hdrs = dict(resp.getheaders())
+        status = resp.status
+        conn.close()
+        return status, hdrs, data
+
     def test_timer_and_parse_helpers(self):
         self.assertEqual(app.parse_int('42', minimum=1), 42)
         self.assertIsNone(app.parse_int('abc', minimum=1))
         self.assertEqual(app.sanitize_text('  hello  ', 5), 'hello')
         iso = app.next_day_start_iso()
         self.assertIn('T00:00:00', iso)
+
+    def test_logo_png_route_serves_image(self):
+        status, headers, body = self.request_bytes('GET', '/logo.png')
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get('Content-Type'), 'image/png')
+        self.assertGreater(len(body), 0)
+
+    def test_homepage_references_logo_png(self):
+        status, _, body = self.request('GET', '/')
+        self.assertEqual(status, 200)
+        self.assertIn("src='/logo.png'", body)
 
     def test_play_endpoint_and_wrong_password(self):
         c = app.db()
