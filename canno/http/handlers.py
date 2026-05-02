@@ -112,6 +112,16 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             finally:
                 c.close()
 
+        def get_app_setting(self, key, default=''):
+            c = repo.connect()
+            try:
+                row = c.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+                return row['value'] if row else default
+            except Exception:
+                return default
+            finally:
+                c.close()
+
         def do_GET(self):
             try:
                 p = urlparse(self.path)
@@ -125,7 +135,12 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.wfile.write(css.encode())
                     return
                 if p.path in ('/logo.png', '/logo1.png'):
-                    logo = BASE_DIR / 'logo1.png'
+                    logo_rel_path = self.get_app_setting('homepage_logo_path', 'logo1.png') or 'logo1.png'
+                    logo = (BASE_DIR / logo_rel_path).resolve()
+                    try:
+                        logo.relative_to(BASE_DIR.resolve())
+                    except Exception:
+                        self.send_html(error_page(400, 'Некорректные данные', 'Путь к логотипу должен быть внутри проекта.'), 400); return
                     if not logo.exists():
                         self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
                     self.send_response(200)
@@ -288,9 +303,11 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_home(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
+            show_logo = self.get_app_setting('homepage_logo_enabled', '1') == '1'
+            logo_html = "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>" if show_logo else "<div class='home-logo home-logo-hidden' aria-hidden='true'></div>"
             self.send_html(html(
                 "<main class='card home-card'>"
-                "<img src='/logo.png' alt='Логотип Canno Quest' class='home-logo'>"
+                f"{logo_html}"
                 f"<h1>{title}</h1>"
                 f"<div class='home-intro'><p>{intro}</p></div>"
                 "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
@@ -410,7 +427,9 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
         def render_admin_settings(self):
             intro = html_lib.escape(self.get_homepage_intro())
             title = html_lib.escape(self.get_homepage_title())
-            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
+            logo_path = html_lib.escape(self.get_app_setting('homepage_logo_path', 'logo1.png'))
+            logo_enabled_checked = "checked" if self.get_app_setting('homepage_logo_enabled', '1') == '1' else ''
+            self.send_html(html(f"<main class='card'><h1>🛠️ Технические настройки</h1><div class='nav-links'><a href='/admin/quests/export.json'>Экспорт квестов (JSON)</a><a href='/admin/audit'>Журнал аудита</a><a href='/admin/runs/archive'>Архивировать завершенные запуски</a></div><h2>Текст на главной</h2><form method='post' action='/admin/settings/save' class='admin-form'><label for='homepage-title'>Основной заголовок</label><input id='homepage-title' name='homepage_title' maxlength='120' value='{title}' placeholder='Canno Quest' required><label for='homepage-intro'>Описание для игроков</label><textarea id='homepage-intro' name='homepage_intro' rows='4' maxlength='2000'>{intro}</textarea><h2>Логотип на главной</h2><label for='homepage-logo-path'>Путь к логотипу (внутри проекта)</label><input id='homepage-logo-path' name='homepage_logo_path' maxlength='512' value='{logo_path}' placeholder='logo1.png'><label><input type='checkbox' name='homepage_logo_enabled' {logo_enabled_checked}>Показывать логотип на главной</label><button>Сохранить текст главной</button></form><h2>Импорт JSON</h2><form method='post' action='/admin/quests/import' class='admin-form'><textarea name='payload' rows='8' placeholder='{{\"quests\": [ ... ]}}'></textarea><button class='btn-secondary'>Импортировать JSON</button></form></main>"))
 
         def export_participants_csv(self):
             self.send_response(200); self.end_headers()
@@ -450,16 +469,18 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     f"<form method='post' action='/admin/quest/toggle'><input type='hidden' name='id' value='{q['id']}'><button class='btn-secondary'>{toggle_label}</button></form></div></td></tr>"
                 )
             rows = ''.join(row_items)
-            heading = f"Редактирование квеста #{selected_id}" if selected_id else 'Новый квест'
+            heading = f"Редактирование квеста #{selected_id}" if selected_id else 'Список квестов'
 
             page = f"""
 <main class='card admin-card'>
   <h1>🧩 Квесты и настройки</h1>
   <p class='muted'>Только интерфейс работы с квестами: создание, редактирование, этапы и пароли.</p>
   <h2>{heading}</h2>
+  <section id='tab-list' class='tab-pane active'><h2>Список квестов</h2>
+  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div></section>
   <form method='post' action='/admin/quest/save' class='admin-form'>
     <input type='hidden' name='id' value='{selected_id}'>
-    <div class='tabs'><button type='button' class='tab-btn active' data-tab='tab-quest'>Квест</button><button type='button' class='tab-btn' data-tab='tab-steps'>Этапы</button><button type='button' class='tab-btn' data-tab='tab-list'>Список</button></div>
+    <h2>{'Редактирование квеста' if selected_id else 'Добавить новый'}</h2>
     <section id='tab-quest' class='tab-pane active'>
     <input name='title' placeholder='Название' maxlength='256' required value='{title}'>
     {'<input name=\'title_en\' placeholder=\'Название (EN)\' maxlength=\'256\' value=\''+title_en+'\'>' if show_english else ''}
@@ -469,13 +490,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
     <button>Сохранить квест</button>
     </section>
   </form>
-  <section id='tab-list' class='tab-pane'><h2>Список квестов</h2>
-  <div class='table-wrap'><table><tr><th>ID</th><th>Название</th><th>Статус</th><th>Лимит</th><th>Действия</th></tr>{rows}</table></div></section>
-  <section id='tab-steps' class='tab-pane'><h2>Этапы квеста</h2>
+  <section id='tab-steps' class='tab-pane active'><h2>Этапы квеста</h2>
   {''.join([f"<form method='post' action='/admin/step/save' class='admin-form mobile-stack'><input type='hidden' name='quest_id' value='{selected_id}'><input type='hidden' name='step_id' value='{st['id']}'><input name='idx' type='number' min='1' value='{st['idx']}' required><textarea name='prompt' rows='3' placeholder='Загадка' required>{esc(st['prompt'])}</textarea><input name='password' placeholder='Пароль' value='{esc(st['password'])}' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button class='btn-secondary'>Сохранить этап #{st['idx']}</button></form>" for st in steps])}
   <form method='post' action='/admin/step/save' class='admin-form mobile-stack block'><input type='hidden' name='quest_id' value='{selected_id}'><input name='idx' type='number' min='1' placeholder='Номер этапа' required><textarea name='prompt' rows='3' placeholder='Новая загадка' required></textarea><input name='password' placeholder='Пароль/отгадка' required><div class='inline-time'><input class='time-input' name='step_time_limit_amount' type='number' min='0' placeholder='10'><select name='step_time_limit_unit' class='time-unit'><option value='minutes'>минуты</option><option value='hours'>часы</option></select></div><button>Добавить этап</button></form>
 </section></main>
-<script>document.querySelectorAll('.tab-btn').forEach((btn)=>{{btn.addEventListener('click',()=>{{document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-pane').forEach((p)=>p.classList.remove('active'));btn.classList.add('active');document.getElementById(btn.dataset.tab).classList.add('active');}});}});</script>
 """
             self.send_html(html(page))
 
@@ -484,6 +502,8 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
             intro = service.sanitize_text(data.get('homepage_intro', [''])[0], 2000)
             title = service.sanitize_text(data.get('homepage_title', [''])[0], 120) or 'Canno Quest'
             enable_english = '1' if data.get('enable_english_content', [''])[-1] in ('on', '1', 'true') else '0'
+            logo_path = service.sanitize_text(data.get('homepage_logo_path', ['logo1.png'])[0], 512) or 'logo1.png'
+            logo_enabled = '1' if data.get('homepage_logo_enabled', [''])[-1] in ('on', '1', 'true') else '0'
             c = repo.connect(); cur = c.cursor()
             try:
                 cur.execute(
@@ -497,6 +517,14 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 cur.execute(
                     "INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                     ('enable_english_content', enable_english),
+                )
+                cur.execute(
+                    "INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_logo_path', logo_path),
+                )
+                cur.execute(
+                    "INSERT INTO app_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ('homepage_logo_enabled', logo_enabled),
                 )
                 c.commit()
             finally:
