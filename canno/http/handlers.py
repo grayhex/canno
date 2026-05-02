@@ -318,7 +318,6 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 "<button class='quest-enter-btn btn'>Войти в квест</button>"
                 "</div>"
                 "</form>"
-                "<a class='btn btn-ghost home-secondary' href='/admin/login'>Организатор? Войти в админку</a>"
                 "</div>"
                 "</section>"
                 "</main>"
