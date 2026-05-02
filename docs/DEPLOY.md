@@ -122,6 +122,10 @@ docker compose up -d --build
 
 Создание бэкапа SQLite:
 
+> Для относительного файла БД используйте `canno.db` или `sqlite://./canno.db`.
+> Не используйте `sqlite:///canno.db`, это интерпретируется как `/canno.db`.
+
+
 ```bash
 python3 scripts/backup_db.py --db canno.db --out-dir backups
 ```
