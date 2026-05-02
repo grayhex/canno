@@ -125,7 +125,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     self.wfile.write(css.encode())
                     return
                 if p.path == '/logo.png':
-                    logo = BASE_DIR / 'logo.png'
+                    logo = BASE_DIR / 'logo1.png'
                     if not logo.exists():
                         self.send_html(error_page(404, 'Не найдено', 'Логотип не найден.'), 404); return
                     self.send_response(200)
@@ -269,7 +269,7 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                     return row['value']
             finally:
                 c.close()
-            return 'Добро пожаловать в Canno Quest! Введите адрес вашего квеста, чтобы начать приключение.'
+            return 'Добро пожаловать в Canno Quest! Введите номер вашего квеста, чтобы начать приключение.'
 
         def render_home(self):
             intro = html_lib.escape(self.get_homepage_intro())
@@ -283,9 +283,10 @@ def create_handler(repo, service, admin_password_hash_value, auth_store):
                 "</div>"
                 f"<div class='home-intro'><p>{intro}</p></div>"
                 "<form class='quest-enter-form' onsubmit=\"event.preventDefault();const token=(document.getElementById('quest-token').value||'').trim().replace(/^\\/+|\\/+$/g,'');if(token){window.location='/play/'+encodeURIComponent(token);}\">"
-                "<label for='quest-token'>Адрес квеста</label>"
-                "<input id='quest-token' name='token' placeholder='Введите токен квеста' maxlength='128' required>"
-                "<button>Перейти к квесту</button>"
+                "<div class='quest-enter-row'>"
+                "<input id='quest-token' name='token' placeholder='Номер квеста' maxlength='128' required>"
+                "<button class='quest-enter-btn'>Войти</button>"
+                "</div>"
                 "</form>"
                 "</main>"
             ))
