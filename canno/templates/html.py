@@ -5,7 +5,7 @@ def html(body):
     return (
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Canno Quest</title><link rel='stylesheet' href='/static.css'></head>"
+        "<title>Canno Quest</title><link rel='stylesheet' href='/static/style.css'></head>"
         "<body><div class='app-shell'>"
         "<header class='top-nav'>"
         "<nav class='top-nav-main' aria-label='Основное меню'>"

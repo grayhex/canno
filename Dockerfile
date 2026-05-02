@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY app.py static.css logo1.png ./
+COPY app.py ./
+COPY static ./static
 COPY scripts ./scripts
 COPY canno ./canno
 
